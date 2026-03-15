@@ -713,6 +713,7 @@ void DeliveryManager::publish_status(
     const std::string & station, float progress, const std::string & error)
 {
     DeliveryStatus msg;
+    msg.stamp = this->now();
     msg.order_id = order_id;
     msg.state = state_to_msg(state);
     msg.current_station = station;

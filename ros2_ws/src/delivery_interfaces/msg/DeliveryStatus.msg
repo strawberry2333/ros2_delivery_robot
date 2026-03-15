@@ -1,6 +1,7 @@
 # 配送状态消息
 # 实时反馈当前配送任务的执行状态
 
+builtin_interfaces/Time stamp      # 状态更新时间戳
 string order_id                    # 订单唯一标识
 
 # 状态枚举常量
