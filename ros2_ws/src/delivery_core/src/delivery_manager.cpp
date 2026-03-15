@@ -603,11 +603,10 @@ bool DeliveryManager::navigate_to(const Pose2D & pose, const std::string & label
     auto goal_future =
         action_client_->async_send_goal(goal_msg, send_goal_options);
 
-    const auto send_code =
-        rclcpp::spin_until_future_complete(shared_from_this(), goal_future, 5s);
-    if (send_code != rclcpp::FutureReturnCode::SUCCESS)
+    // 等待 goal 被接受（executor 在后台 spin，无需手动 spin）
+    if (goal_future.wait_for(5s) != std::future_status::ready)
     {
-        RCLCPP_ERROR(get_logger(), "[%s] 目标发送失败", label.c_str());
+        RCLCPP_ERROR(get_logger(), "[%s] 目标发送超时", label.c_str());
         return false;
     }
 
@@ -620,10 +619,8 @@ bool DeliveryManager::navigate_to(const Pose2D & pose, const std::string & label
 
     auto result_future = action_client_->async_get_result(goal_handle);
     const std::chrono::duration<double> timeout(navigation_timeout_sec_);
-    const auto result_code = rclcpp::spin_until_future_complete(
-        shared_from_this(), result_future, timeout);
 
-    if (result_code == rclcpp::FutureReturnCode::SUCCESS)
+    if (result_future.wait_for(timeout) == std::future_status::ready)
     {
         const auto wrapped_result = result_future.get();
         return (wrapped_result.code == rclcpp_action::ResultCode::SUCCEEDED);
@@ -631,8 +628,7 @@ bool DeliveryManager::navigate_to(const Pose2D & pose, const std::string & label
 
     RCLCPP_WARN(get_logger(), "[%s] 导航超时，发送取消指令...", label.c_str());
     auto cancel_future = action_client_->async_cancel_goal(goal_handle);
-    (void)rclcpp::spin_until_future_complete(
-        shared_from_this(), cancel_future, 5s);
+    cancel_future.wait_for(5s);
     return false;
 }
 
