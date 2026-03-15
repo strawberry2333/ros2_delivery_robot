@@ -32,6 +32,7 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(turtlebot3_gazebo_dir, "launch", "turtlebot3_world.launch.py")
         ),
+        launch_arguments={"use_sim_time": use_sim_time}.items(),
     )
 
     return LaunchDescription(
