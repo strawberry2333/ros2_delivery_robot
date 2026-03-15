@@ -422,6 +422,17 @@ void DeliveryManager::handle_get_report(
 {
     std::lock_guard<std::mutex> lock(queue_mutex_);
 
+    // 排队中的订单
+    for (const auto & record : order_queue_)
+    {
+        DeliveryStatus status;
+        status.order_id = record.order.order_id;
+        status.state = state_to_msg(record.state);
+        status.error_msg = record.error_msg;
+        response->reports.push_back(status);
+    }
+
+    // 已完成/失败的订单
     for (const auto & record : completed_orders_)
     {
         DeliveryStatus status;
