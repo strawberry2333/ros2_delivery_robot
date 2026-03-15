@@ -38,7 +38,7 @@ jobs:
             libyaml-cpp-dev
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Build
         working-directory: ros2_ws
