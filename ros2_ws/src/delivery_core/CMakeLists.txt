@@ -18,6 +18,7 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(delivery_interfaces REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
 # delivery_manager 节点
@@ -35,6 +36,7 @@ ament_target_dependencies(delivery_manager
   tf2_ros
   tf2_geometry_msgs
   std_msgs
+  std_srvs
   delivery_interfaces
 )
 

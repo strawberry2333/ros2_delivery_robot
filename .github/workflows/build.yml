@@ -1,0 +1,46 @@
+name: ROS2 Build
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    container:
+      image: ros:jazzy-ros-base
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            python3-colcon-common-extensions \
+            ros-jazzy-nav2-msgs \
+            ros-jazzy-tf2 \
+            ros-jazzy-tf2-ros \
+            ros-jazzy-tf2-geometry-msgs \
+            ros-jazzy-std-srvs \
+            ros-jazzy-rclcpp-action \
+            ros-jazzy-rclcpp-components \
+            ros-jazzy-lifecycle-msgs \
+            ros-jazzy-rosidl-default-generators \
+            ros-jazzy-rosidl-default-runtime \
+            ros-jazzy-ament-lint-auto \
+            ros-jazzy-ament-cmake-lint-cmake \
+            ros-jazzy-ament-cmake-xmllint \
+            libyaml-cpp-dev
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build
+        working-directory: ros2_ws
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          colcon build --event-handlers console_direct+ --symlink-install
