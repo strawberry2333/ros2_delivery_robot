@@ -1,26 +1,61 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<!--
+  delivery_core 包清单文件
+  定义包的元信息、构建工具和依赖关系。
+  本包是配送机器人系统的核心功能包，包含订单管理、导航编排和状态发布逻辑。
+-->
 <package format="3">
+  <!-- 包名称，必须与 CMakeLists.txt 中的 project() 名称一致 -->
   <name>delivery_core</name>
+
+  <!-- 包版本号，遵循语义版本规范 (major.minor.patch) -->
   <version>0.1.0</version>
+
+  <!-- 包描述：简要说明本包的功能 -->
   <description>Core delivery robot logic: order management, navigation orchestration</description>
+
+  <!-- 维护者信息 -->
   <maintainer email="wen@todo.todo">wen</maintainer>
+
+  <!-- 开源许可证 -->
   <license>Apache-2.0</license>
 
+  <!-- ======================== 构建工具依赖 ======================== -->
+  <!-- ament_cmake：ROS2 的 CMake 构建基础设施 -->
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <!-- ======================== 编译 + 运行时依赖 ======================== -->
+  <!-- 以下使用 <depend> 表示编译期和运行期都需要 -->
+
+  <!-- ROS2 C++ 客户端库 -->
   <depend>rclcpp</depend>
+
+  <!-- ROS2 Action 客户端库（调用 Nav2 NavigateToPose action） -->
   <depend>rclcpp_action</depend>
+
+  <!-- Nav2 消息定义（NavigateToPose action 类型） -->
   <depend>nav2_msgs</depend>
+
+  <!-- 几何消息（PoseStamped 等，构造导航目标点） -->
   <depend>geometry_msgs</depend>
+
+  <!-- TF2 变换库（查询 map→base_link 获取机器人位置） -->
   <depend>tf2</depend>
   <depend>tf2_ros</depend>
   <depend>tf2_geometry_msgs</depend>
+
+  <!-- 本项目自定义接口包（DeliveryOrder, SubmitOrder 等） -->
   <depend>delivery_interfaces</depend>
+
+  <!-- 标准服务定义（Trigger 服务，用于装/卸货确认） -->
   <depend>std_srvs</depend>
+
+  <!-- YAML 解析库（读取 stations.yaml 站点配置） -->
   <depend>yaml-cpp</depend>
 
   <export>
+    <!-- 声明构建类型为 ament_cmake -->
     <build_type>ament_cmake</build_type>
   </export>
 </package>

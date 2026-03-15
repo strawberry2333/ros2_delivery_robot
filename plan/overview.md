@@ -1,9 +1,5 @@
 # 项目总览：ROS2 多点配送机器人
 
-## 背景与动机
-
-用户有一份 ROS2 机器人任务系统设计方案，但感觉当前方案是"技术点堆砌"，缺乏真实场景驱动。目标是构建一个**场景驱动**的求职展示项目，复用 `Ros2Learning` 仓库的成熟代码。
-
 ## 场景描述
 
 **一句话：** 室内配送机器人接收配送订单，自主导航至取货点等待装货确认，再导航至送货点等待卸货确认，支持多订单队列和失败重试。
@@ -12,8 +8,6 @@
 - 仓库内部物料配送（工位间转运零件）
 - 医院药品/样本配送（药房→病房）
 - 办公楼文件/快递配送（前台→工位）
-
-**为什么可信：** 这是 Keenon、普渡科技、Bear Robotics 等公司的核心产品形态，面试官秒懂。
 
 ## 技术栈
 
@@ -29,11 +23,11 @@
 
 ## 关键设计决策
 
-1. **停靠等待确认 vs mock 机械臂** — 选择"等待确认"模式，因为这是真实配送机器人的实际做法（Keenon/普渡科技就是这样），比假装有个机械臂在抓取更可信。
+1. **停靠等待确认 vs mock 机械臂** — 选择"等待确认"模式，这是真实配送机器人的实际做法，比模拟机械臂抓取更贴近实际。
 
 2. **Action 驱动配送执行** — delivery_manager 通过 ExecuteDelivery.action 调用 delivery_executor，支持取消和进度反馈。
 
-3. **BT 编排站点行为 + 状态机管理订单队列** — 各取所长：BT 擅长单次配送内的决策流程，状态机擅长订单级别的状态管理。
+3. **BT + 状态机混合架构** — BT 擅长单次配送内的决策流程，状态机擅长订单级别的状态管理，各取所长。
 
 4. **5 个包精简结构** — 不设 perception 包（配送不需要视觉检测），不设 motion_manager（导航已封装在 BT 节点中）。
 
@@ -63,17 +57,16 @@ ros2_delivery_robot/
     delivery_bringup/            # Launch + 配置文件
 ```
 
-## 项目亮点（面试谈资）
+## 技术亮点
 
-1. **真实产品形态** — 不是 ROS2 教程拼装，而是可以说清"解决什么问题"的完整系统
-2. **Action-based 任务解耦** — 面试必考：什么时候用 Service vs Action
-3. **BT + 状态机混合架构** — 展示对不同编排工具适用场景的理解
-4. **Lifecycle 不是为了演示** — 有具体理由：Nav2 必须在 executor 之前就绪
-5. **停靠等待确认** — 展示对真实配送机器人工作流程的理解
+1. **Action-based 任务解耦** — Service 用于请求-响应，Action 用于长时间异步任务（含进度反馈与取消）
+2. **BT + 状态机混合架构** — 不同编排工具适用于不同粒度的任务管理
+3. **Lifecycle 管理** — Nav2 必须在 executor 之前就绪，生命周期节点保证启动顺序
+4. **停靠等待确认** — 还原真实配送机器人工作流程
 
 ## 开发路线
 
-分三个阶段，每阶段可独立演示。详见各阶段计划文档：
+分三个阶段，每阶段可独立验证。详见各阶段计划文档：
 
 - `phase1_skeleton.md` — 骨架 + 单点导航 ✅ 已完成
 - `phase2_behavior_tree.md` — 行为树 + 停靠确认
@@ -81,9 +74,21 @@ ros2_delivery_robot/
 
 ## 验证方式
 
-1. `ros2 launch delivery_bringup demo.launch.py` 一键启动全系统
-2. `ros2 service call /submit_order` 提交配送订单
-3. `ros2 topic echo /delivery_status` 观察状态流转
-4. `ros2 service call /confirm_load` 和 `/confirm_unload` 模拟人工确认
-5. `ros2 service call /get_delivery_report` 获取配送报告
-6. 录制 2 分钟演示视频覆盖完整配送流程
+```bash
+# 一键启动全系统
+ros2 launch delivery_bringup demo.launch.py
+
+# 提交配送订单
+ros2 service call /submit_order delivery_interfaces/srv/SubmitOrder \
+  "{order: {order_id: 'order_001', pickup_station: 'station_A', dropoff_station: 'station_C'}}"
+
+# 观察状态流转
+ros2 topic echo /delivery_status
+
+# 模拟人工确认装/卸货
+ros2 service call /confirm_load std_srvs/srv/Trigger
+ros2 service call /confirm_unload std_srvs/srv/Trigger
+
+# 获取配送报告
+ros2 service call /get_delivery_report delivery_interfaces/srv/GetDeliveryReport
+```

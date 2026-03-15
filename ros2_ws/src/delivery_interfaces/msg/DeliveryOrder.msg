@@ -1,13 +1,39 @@
-# 配送订单消息
-# 描述一个从取货点到送货点的配送任务
+# =============================================================================
+# DeliveryOrder.msg — 配送订单消息
+# =============================================================================
+# 用途：描述一个从取货点到送货点的完整配送任务。
+# 使用场景：
+#   - 外部系统通过 SubmitOrder 服务提交订单时，请求体中携带此消息
+#   - delivery_manager 内部维护订单队列，每个元素即为此消息类型
+#   - ExecuteDelivery action 的 Goal 中嵌入此消息，驱动行为树执行
+# 注意：order_id 需由调用方保证全局唯一，重复 ID 会被服务端拒绝
+# =============================================================================
 
-string order_id                    # 订单唯一标识
-string pickup_station              # 取货站点 ID
-string dropoff_station             # 送货站点 ID
+# 订单唯一标识符
+# 格式建议：<前缀>_<时间戳或序号>，例如 "order_001", "delivery_20260315_001"
+# 约束：非空字符串，全局唯一，长度建议不超过 64 字符
+string order_id
 
+# 取货站点 ID
+# 必须与 stations.yaml 配置文件中定义的 station_id 严格匹配
+# 示例值："station_A", "kitchen_01"
+string pickup_station
+
+# 送货站点 ID
+# 必须与 stations.yaml 配置文件中定义的 station_id 严格匹配
+# 约束：不能与 pickup_station 相同（取货点和送货点不能是同一站点）
+# 示例值："station_C", "room_302"
+string dropoff_station
+
+# ---------------------------------------------------------------------------
 # 优先级枚举常量
-uint8 PRIORITY_NORMAL=0
-uint8 PRIORITY_HIGH=1
-uint8 PRIORITY_URGENT=2
+# 用于订单队列的排序调度，数值越大优先级越高，优先级高的订单会被优先执行
+# ---------------------------------------------------------------------------
+uint8 PRIORITY_NORMAL=0              # 普通优先级（默认值），按提交顺序排队
+uint8 PRIORITY_HIGH=1                # 高优先级，插队到普通订单之前执行
+uint8 PRIORITY_URGENT=2              # 紧急优先级，立即插入队列最前端执行
 
-uint8 priority 0                   # 优先级
+# 当前订单的优先级
+# 取值范围：0 (PRIORITY_NORMAL) | 1 (PRIORITY_HIGH) | 2 (PRIORITY_URGENT)
+# 默认值为 0（普通优先级）
+uint8 priority 0

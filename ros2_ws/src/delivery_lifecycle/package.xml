@@ -1,18 +1,28 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<!-- ROS 2 包清单文件（package format 3） -->
+<!-- 定义包的元信息、依赖关系和构建类型 -->
 <package format="3">
+  <!-- 包名称，必须与 CMakeLists.txt 中的 project() 一致 -->
   <name>delivery_lifecycle</name>
   <version>0.1.0</version>
+  <!-- 包描述：配送机器人节点的生命周期管理器 -->
   <description>Lifecycle management for delivery robot nodes</description>
   <maintainer email="wen@todo.todo">wen</maintainer>
   <license>Apache-2.0</license>
 
+  <!-- 构建工具依赖：使用 ament_cmake 构建系统 -->
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <!-- 运行时 + 构建时依赖（<depend> 等价于同时声明 build_depend 和 exec_depend） -->
+  <!-- rclcpp: ROS 2 C++ 核心库，提供节点、执行器、回调组等基础设施 -->
   <depend>rclcpp</depend>
+  <!-- rclcpp_components: 组件化节点支持，用于注册和动态加载节点组件 -->
   <depend>rclcpp_components</depend>
+  <!-- lifecycle_msgs: 生命周期相关的标准消息和服务定义（ChangeState, GetState 等） -->
   <depend>lifecycle_msgs</depend>
 
+  <!-- 导出构建类型声明，告知 colcon 使用 ament_cmake 进行构建 -->
   <export>
     <build_type>ament_cmake</build_type>
   </export>

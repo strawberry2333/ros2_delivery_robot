@@ -1,13 +1,60 @@
-# 执行单次配送的动作定义
-# Goal: 配送订单
+# =============================================================================
+# ExecuteDelivery.action — 执行单次配送动作
+# =============================================================================
+# 用途：以 ROS2 Action 方式执行一次完整的配送流程（Phase 2 行为树驱动）。
+# 使用场景：
+#   - delivery_executor（BT 宿主节点）作为 Action Server 提供此接口
+#   - delivery_manager 作为 Action Client 发送 Goal，驱动单次配送执行
+#   - 支持实时反馈（Feedback）、结果查询（Result）和中途取消（Cancel）
+# 完整流程：
+#   导航至取货点 → 停靠对接 → 等待装货确认 → 导航至送货点 → 停靠对接 → 等待卸货确认
+# Action 名称：/execute_delivery
+# =============================================================================
+
+# ---- Goal（目标）----
+# 由 Action Client（delivery_manager）发送，指定要执行的配送订单
+
+# 待执行的配送订单
+# 包含 order_id、pickup_station、dropoff_station、priority 等完整信息
+# Action Server 收到后将解析站点坐标并启动行为树执行
 delivery_interfaces/DeliveryOrder order
+
 ---
-# Result: 配送结果
+
+# ---- Result（结果）----
+# 配送完成（成功或失败）后由 Action Server 返回
+
+# 配送是否成功完成
+# true — 全部流程（取货 + 送货）均成功完成
+# false — 配送过程中发生错误，详见 error_msg
 bool success
+
+# 配送总耗时（秒）
+# 从 Action Server 接受 Goal 开始计时，到配送完成或失败为止
+# 可用于配送效率统计和路径优化分析
 float64 elapsed_time_sec
+
+# 错误信息
+# success=true 时为空字符串
+# success=false 时描述失败原因，如 "Navigation failed", "Load confirmation timeout"
 string error_msg
+
 ---
-# Feedback: 实时状态
+
+# ---- Feedback（实时反馈）----
+# 配送执行过程中由 Action Server 周期性发布，供 Client 端监控进度
+
+# 当前配送状态
+# 取值与 DeliveryStatus.msg 中的状态枚举常量一致：
+#   0=IDLE, 1=GOING_TO_PICKUP, 2=WAITING_LOAD,
+#   3=GOING_TO_DROPOFF, 4=WAITING_UNLOAD, 5=COMPLETE, 6=FAILED
 uint8 state
+
+# 当前关联的站点 ID
+# 导航阶段为目标站点 ID，等待阶段为当前所在站点 ID
 string current_station
+
+# 当前导航进度百分比
+# 取值范围：0.0 ~ 1.0
+# 仅在导航状态（GOING_TO_PICKUP / GOING_TO_DROPOFF）下动态更新
 float32 progress

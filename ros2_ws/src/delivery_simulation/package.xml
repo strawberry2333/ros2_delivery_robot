@@ -3,15 +3,28 @@
 <package format="3">
   <name>delivery_simulation</name>
   <version>0.1.0</version>
+  <!-- 本包为配送机器人的仿真资源包，包含 Gazebo 世界、地图、模型、RViz 配置等 -->
   <description>Gazebo simulation resources for the delivery robot</description>
   <maintainer email="wen@todo.todo">wen</maintainer>
   <license>Apache-2.0</license>
 
+  <!-- 构建工具依赖：使用 ament_cmake 作为构建系统，
+       本包为纯资源包，不编译代码，但仍需 ament_cmake 来完成资源安装和包索引生成 -->
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <!-- 运行时依赖：ros_gz_sim（原 gazebo_ros）
+       提供 Gazebo Harmonic 仿真器的 ROS 2 集成，包括：
+       - gz_sim.launch.py 启动入口
+       - 在 launch 文件中加载 .sdf 世界文件并启动仿真环境 -->
   <exec_depend>ros_gz_sim</exec_depend>
+
+  <!-- 运行时依赖：ros_gz_bridge
+       提供 Gazebo 与 ROS 2 之间的话题/服务桥接，将 Gazebo 内部的传感器数据
+       （如激光雷达 /scan、IMU、里程计 /odom、相机图像等）转发为 ROS 2 话题，
+       使 Nav2 导航栈和其他 ROS 2 节点能够接收仿真传感器数据 -->
   <exec_depend>ros_gz_bridge</exec_depend>
 
+  <!-- 声明构建类型为 ament_cmake，供 colcon 识别本包的构建方式 -->
   <export>
     <build_type>ament_cmake</build_type>
   </export>

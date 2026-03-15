@@ -1,34 +1,61 @@
-# 配送站点配置
-# 坐标基于 TurtleBot3 World 地图 (map frame)
-# yaw 单位：弧度
+# =============================================================================
+# 配送站点配置文件
+# =============================================================================
+# 定义所有配送站点的位置和类型，被 delivery_manager 节点在启动时加载。
+# 坐标基于 TurtleBot3 World 地图 (map frame)。
+#
+# 字段说明：
+#   station_id   - 站点唯一标识符（字符串），用于订单中引用站点
+#   x            - 站点在地图坐标系中的 X 坐标（单位：米）
+#   y            - 站点在地图坐标系中的 Y 坐标（单位：米）
+#   yaw          - 机器人到达站点后的朝向角（单位：弧度，范围 [-pi, pi]）
+#                  0.0 朝正 X 轴方向，1.57 朝正 Y 轴方向，3.14/-3.14 朝负 X 轴方向
+#   station_type - 站点类型（整数）：
+#                  0 = pickup（取货站）：机器人在此装载货物
+#                  1 = dropoff（送货站）：机器人在此卸载货物
+#                  2 = charge（充电站）：机器人待机/充电位置
+#
+# 添加新站点时，需确保坐标在地图可通行区域内，避免设置在墙壁或障碍物位置。
+# 可通过 RViz 中的 "Publish Point" 工具获取目标坐标。
+# =============================================================================
 
 stations:
+  # 取货站 A：位于地图右上方区域
+  # 朝向正 X 轴方向 (0.0 弧度)
   - station_id: "station_A"
     x: 1.5
     y: 0.5
     yaw: 0.0
-    station_type: 0   # pickup
+    station_type: 0   # pickup（取货站）
 
+  # 取货站 B：位于地图右下方区域
+  # 朝向正 Y 轴方向 (1.57 弧度 ≈ 90°)
   - station_id: "station_B"
     x: 1.5
     y: -1.0
     yaw: 1.57
-    station_type: 0   # pickup
+    station_type: 0   # pickup（取货站）
 
+  # 送货站 C：位于地图左下方区域
+  # 朝向负 X 轴方向 (3.14 弧度 ≈ 180°)
   - station_id: "station_C"
     x: -0.5
     y: -1.5
     yaw: 3.14
-    station_type: 1   # dropoff
+    station_type: 1   # dropoff（送货站）
 
+  # 送货站 D：位于地图左上方区域
+  # 朝向负 Y 轴方向 (-1.57 弧度 ≈ -90°)
   - station_id: "station_D"
     x: -1.0
     y: 1.0
     yaw: -1.57
-    station_type: 1   # dropoff
+    station_type: 1   # dropoff（送货站）
 
+  # 充电站/待机点：位于地图原点
+  # 通常也是机器人的初始生成位置
   - station_id: "charge_home"
     x: 0.0
     y: 0.0
     yaw: 0.0
-    station_type: 2   # charge
+    station_type: 2   # charge（充电站）

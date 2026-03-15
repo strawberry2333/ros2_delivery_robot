@@ -4,6 +4,8 @@
 
 与用户沟通时尽量使用中文回复。代码评审保持专业，直指问题。
 
+Git commit message 使用中文撰写，技术术语（如 CI、std_srvs 等）可保留英文。
+
 ## Repository
 
 - **本项目**: https://github.com/strawberry2333/ros2_delivery_robot
@@ -12,9 +14,7 @@
 
 **一句话：** 室内多点配送机器人——接收配送订单，自主导航至取货点等待装货确认，再导航至送货点等待卸货确认，支持多订单队列和失败重试。
 
-**定位：** 场景驱动的求职展示项目，复用 `Ros2Learning` 仓库的成熟 ROS2 代码模式。
-
-**为什么可信：** 这是 Keenon、普渡科技、Bear Robotics 等公司的核心产品形态。
+**定位：** 场景驱动的室内配送机器人系统，复用 `Ros2Learning` 仓库的成熟 ROS2 代码模式。
 
 ## Source Repository
 

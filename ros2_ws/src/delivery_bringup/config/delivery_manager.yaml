@@ -1,16 +1,75 @@
-# delivery_manager 节点参数
+# =============================================================================
+# delivery_manager 节点参数配置
+# =============================================================================
+# 配送管理器的运行时参数，控制导航行为、超时策略和初始位姿。
+# 参数通过 delivery.launch.py 加载，launch 参数可覆盖此处的默认值。
+# =============================================================================
+
 delivery_manager:
   ros__parameters:
+    # --- 时间源配置 ---
+    # 是否使用仿真时间（来自 Gazebo 发布的 /clock 话题）
+    # true：仿真环境（必须），false：真实机器人环境
     use_sim_time: true
+
+    # --- 坐标系配置 ---
+    # 地图坐标系名称，AMCL 定位和全局规划使用的参考坐标系
+    # 一般无需修改，保持与 Nav2 配置一致即可
     map_frame: "map"
+
+    # 机器人基座坐标系名称，用于获取机器人当前位姿（通过 TF 查询 map → base_link）
+    # 对于 TurtleBot3，标准名称为 "base_link"；不同机器人可能使用 "base_footprint"
     base_frame: "base_link"
+
+    # --- 导航配置 ---
+    # Nav2 导航动作服务器的名称
+    # 对应 Nav2 的 navigate_to_pose 动作接口，类型为 nav2_msgs/action/NavigateToPose
+    # 一般无需修改，除非 Nav2 配置中重映射了动作名称
     nav2_action_name: "navigate_to_pose"
+
+    # 站点配置文件路径
+    # 空字符串表示由 launch 文件在运行时注入实际路径
+    # 也可以直接填写绝对路径，例如 "/path/to/stations.yaml"
     station_config: ""                     # 由 launch 文件注入
+
+    # --- 超时配置 ---
+    # 等待 /clock 话题可用的超时时间（单位：秒）
+    # 仅在 use_sim_time=true 时生效
+    # 如果超时仍未收到 /clock 消息，节点将报错退出
+    # 取值范围：建议 10.0 ~ 60.0，默认 30.0
     clock_wait_timeout_sec: 30.0
+
+    # 等待 TF 变换可用的超时时间（单位：秒）
+    # 节点启动时需要等待 map → base_link 的 TF 链路就绪
+    # 该链路依赖 AMCL 定位和 robot_state_publisher 正常运行
+    # 取值范围：建议 10.0 ~ 30.0，默认 15.0
     tf_wait_timeout_sec: 15.0
+
+    # 单次导航任务的超时时间（单位：秒）
+    # 从发送导航目标到到达目标点的最长等待时间
+    # 超时后导航将被取消，订单状态标记为失败
+    # 取值范围：建议 60.0 ~ 300.0，取决于地图大小和机器人速度，默认 120.0
     navigation_timeout_sec: 120.0
-    wait_confirmation_timeout_sec: 60.0    # 等待装/卸货确认的超时时间
+
+    # 等待装/卸货确认的超时时间（单位：秒）
+    # 机器人到达取货站/送货站后，等待人工通过 /confirm_load 或 /confirm_unload 服务确认的最长时间
+    # 超时后订单状态将标记为失败
+    # 取值范围：建议 30.0 ~ 300.0，默认 60.0
+    wait_confirmation_timeout_sec: 60.0
+
+    # --- 初始位姿配置 ---
+    # 是否在节点启动时自动发布初始位姿到 /initialpose 话题
+    # 设为 true 时，AMCL 会使用此位姿作为粒子滤波的初始分布中心
+    # 仿真环境中建议开启，真实机器人中可根据需要关闭（手动在 RViz 中设置）
     publish_initial_pose: true
+
+    # 初始位姿 X 坐标（单位：米，地图坐标系下）
+    # 应与 Gazebo 中机器人的生成位置一致
     initial_x: 0.0
+
+    # 初始位姿 Y 坐标（单位：米，地图坐标系下）
     initial_y: 0.0
+
+    # 初始位姿朝向角（单位：弧度，范围 [-pi, pi]）
+    # 应与 Gazebo 中机器人的生成朝向一致
     initial_yaw: 0.0
