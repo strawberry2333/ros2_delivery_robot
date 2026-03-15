@@ -14,9 +14,16 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
+    bringup_share = FindPackageShare("delivery_bringup")
+
     # 站点配置文件路径
     default_station_config = PathJoinSubstitution(
-        [FindPackageShare("delivery_bringup"), "config", "stations.yaml"]
+        [bringup_share, "config", "stations.yaml"]
+    )
+
+    # delivery_manager 参数文件
+    default_params_file = PathJoinSubstitution(
+        [bringup_share, "config", "delivery_manager.yaml"]
     )
 
     # Launch 参数声明
@@ -42,13 +49,14 @@ def generate_launch_description():
     initial_y_arg = DeclareLaunchArgument("initial_y", default_value="0.0")
     initial_yaw_arg = DeclareLaunchArgument("initial_yaw", default_value="0.0")
 
-    # delivery_manager 节点
+    # delivery_manager 节点：先加载参数文件，再用 launch 参数覆盖
     delivery_manager = Node(
         package="delivery_core",
         executable="delivery_manager",
         name="delivery_manager",
         output="screen",
         parameters=[
+            default_params_file,
             {
                 "station_config": LaunchConfiguration("station_config"),
                 "use_sim_time": LaunchConfiguration("use_sim_time"),
@@ -56,9 +64,7 @@ def generate_launch_description():
                 "initial_x": LaunchConfiguration("initial_x"),
                 "initial_y": LaunchConfiguration("initial_y"),
                 "initial_yaw": LaunchConfiguration("initial_yaw"),
-                "navigation_timeout_sec": 120.0,
-                "wait_confirmation_timeout_sec": 60.0,
-            }
+            },
         ],
     )
 
