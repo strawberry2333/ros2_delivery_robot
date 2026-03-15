@@ -38,6 +38,8 @@ DeliveryManager::DeliveryManager()
         "navigation_timeout_sec", 120.0);
     wait_confirmation_timeout_sec_ = this->declare_parameter<double>(
         "wait_confirmation_timeout_sec", 60.0);
+    action_server_wait_timeout_sec_ = this->declare_parameter<double>(
+        "action_server_wait_timeout_sec", 10.0);
 
     initial_x_ = this->declare_parameter<double>("initial_x", 0.0);
     initial_y_ = this->declare_parameter<double>("initial_y", 0.0);
@@ -593,7 +595,9 @@ bool DeliveryManager::wait_for_action_server()
 {
     RCLCPP_INFO(get_logger(), "等待 Nav2 action server [%s]...",
                 nav2_action_name_.c_str());
-    return action_client_->wait_for_action_server(10s);
+    const std::chrono::duration<double> timeout(action_server_wait_timeout_sec_);
+    return action_client_->wait_for_action_server(
+        std::chrono::duration_cast<std::chrono::milliseconds>(timeout));
 }
 
 void DeliveryManager::publish_initial_pose()

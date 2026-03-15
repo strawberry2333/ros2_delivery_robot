@@ -238,6 +238,7 @@ private:
     double tf_wait_timeout_sec_{15.0};          ///< TF 等待超时
     double navigation_timeout_sec_{120.0};      ///< 导航超时
     double wait_confirmation_timeout_sec_{60.0}; ///< 确认等待超时
+    double action_server_wait_timeout_sec_{10.0}; ///< Action server 等待超时
     double initial_x_{0.0};                     ///< 初始位姿 X
     double initial_y_{0.0};                     ///< 初始位姿 Y
     double initial_yaw_{0.0};                   ///< 初始位姿 Yaw
