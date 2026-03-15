@@ -62,9 +62,9 @@ ros2_delivery_robot/
 - `ExecuteDelivery.action` — 执行单次配送 (Phase 2)
 
 ### delivery_core
-- **delivery_manager** — 订单队列管理 + 导航编排（Phase 1 已实现）
-- **delivery_executor** — BT 宿主节点（Phase 2）
-- **BT 叶节点** — NavigateToStation, DockAtStation, WaitForConfirmation, ReportDeliveryStatus, CheckBattery（Phase 2-3）
+- **delivery_manager** — 订单队列管理 + 调度（通过 ExecuteDelivery Action 委托执行）
+- **delivery_executor** — BT 宿主节点，持有 Action Server + 确认服务
+- **BT 叶节点** — NavigateToStation, DockAtStation, WaitForConfirmation, ReportDeliveryStatus（已实现），CheckBattery（Phase 3）
 
 ### delivery_lifecycle
 - 生命周期管理器，管理节点启动顺序
@@ -130,7 +130,7 @@ ros2 service call /get_delivery_report delivery_interfaces/srv/GetDeliveryReport
 ## Development Progress
 
 - [x] Phase 1: 骨架 + 单点导航（delivery_manager 核心流程可用）
-- [ ] Phase 2: 行为树 + 停靠确认
+- [x] Phase 2: 行为树 + 停靠确认（delivery_executor BT 宿主 + 4 个 BT 叶节点）
 - [ ] Phase 3: 多订单 + 生命周期 + 工程化
 
 详见 `plan/` 目录下的分阶段计划文档。

@@ -60,8 +60,38 @@ find_package(std_srvs REQUIRED)
 # YAML 解析库（用于读取 stations.yaml 站点配置文件）
 find_package(yaml-cpp REQUIRED)
 
+# BehaviorTree.CPP v4（Phase 2 行为树驱动配送执行）
+find_package(behaviortree_cpp REQUIRED)
+
 # ---------------------------------------------------------------------------
-# 构建目标：delivery_manager 可执行文件
+# 构建目标 1：delivery_bt_nodes 静态库（BT 叶节点）
+# ---------------------------------------------------------------------------
+add_library(delivery_bt_nodes STATIC
+  src/nodes/navigate_to_station.cpp
+  src/nodes/dock_at_station.cpp
+  src/nodes/wait_for_confirmation.cpp
+  src/nodes/report_delivery_status.cpp
+)
+
+target_include_directories(delivery_bt_nodes PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+ament_target_dependencies(delivery_bt_nodes
+  rclcpp
+  rclcpp_action
+  nav2_msgs
+  geometry_msgs
+  tf2
+  tf2_geometry_msgs
+  std_srvs
+  delivery_interfaces
+  behaviortree_cpp
+)
+
+# ---------------------------------------------------------------------------
+# 构建目标 2：delivery_manager 可执行文件
 # ---------------------------------------------------------------------------
 add_executable(delivery_manager
   src/delivery_manager.cpp          # 核心实现：订单管理 + 导航编排 + 状态发布
@@ -77,7 +107,6 @@ ament_target_dependencies(delivery_manager
   tf2
   tf2_ros
   tf2_geometry_msgs
-  std_srvs
   delivery_interfaces
 )
 
@@ -91,18 +120,51 @@ target_include_directories(delivery_manager PUBLIC
 )
 
 # ---------------------------------------------------------------------------
+# 构建目标 3：delivery_executor 可执行文件（BT 宿主节点）
+# ---------------------------------------------------------------------------
+add_executable(delivery_executor
+  src/delivery_executor.cpp
+  src/delivery_executor_main.cpp
+)
+
+target_include_directories(delivery_executor PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+ament_target_dependencies(delivery_executor
+  rclcpp
+  rclcpp_action
+  nav2_msgs
+  geometry_msgs
+  tf2
+  tf2_geometry_msgs
+  std_srvs
+  delivery_interfaces
+  behaviortree_cpp
+)
+
+target_link_libraries(delivery_executor delivery_bt_nodes yaml-cpp)
+
+# ---------------------------------------------------------------------------
 # 安装规则
 # ---------------------------------------------------------------------------
 
 # 安装可执行文件到 lib/<package_name>/ 目录（ROS2 标准路径）
 install(TARGETS
   delivery_manager
+  delivery_executor
   DESTINATION lib/${PROJECT_NAME}
 )
 
 # 安装头文件（供其他包依赖时使用）
 install(DIRECTORY include/
   DESTINATION include
+)
+
+# 安装行为树 XML 文件到 share 目录
+install(DIRECTORY behavior_trees/
+  DESTINATION share/${PROJECT_NAME}/behavior_trees
 )
 
 # ---------------------------------------------------------------------------

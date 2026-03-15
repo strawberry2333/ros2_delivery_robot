@@ -1,0 +1,38 @@
+<!--
+  single_delivery.xml — 单次配送行为树
+  驱动完整的 取货→送货 配送流程：
+    导航取货点 → 停靠 → 报告状态 → 等待装货确认
+    导航送货点 → 停靠 → 报告状态 → 等待卸货确认
+    报告完成状态
+
+  黑板变量（由 executor 设置）：
+    - order_id: 订单 ID
+    - pickup_station: 取货站点 ID
+    - dropoff_station: 送货站点 ID
+    - stations: 站点映射表 (StationMap)
+
+  Phase 3 扩展：ID="SingleDelivery" 可被 SubTree 引用
+-->
+<root BTCPP_format="4" main_tree_to_execute="SingleDelivery">
+  <BehaviorTree ID="SingleDelivery">
+    <Sequence>
+      <!-- 取货阶段 -->
+      <NavigateToStation    station_id="{pickup_station}" />
+      <DockAtStation        station_id="{pickup_station}" />
+      <ReportDeliveryStatus order_id="{order_id}" state="2"
+                            station_id="{pickup_station}" progress="0.3" />
+      <WaitForConfirmation  confirm_type="load" timeout_sec="60.0" />
+
+      <!-- 送货阶段 -->
+      <NavigateToStation    station_id="{dropoff_station}" />
+      <DockAtStation        station_id="{dropoff_station}" />
+      <ReportDeliveryStatus order_id="{order_id}" state="4"
+                            station_id="{dropoff_station}" progress="0.8" />
+      <WaitForConfirmation  confirm_type="unload" timeout_sec="60.0" />
+
+      <!-- 完成 -->
+      <ReportDeliveryStatus order_id="{order_id}" state="5"
+                            station_id="{dropoff_station}" progress="1.0" />
+    </Sequence>
+  </BehaviorTree>
+</root>

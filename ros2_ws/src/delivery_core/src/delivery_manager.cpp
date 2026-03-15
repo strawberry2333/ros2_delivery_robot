@@ -115,30 +115,10 @@ DeliveryManager::DeliveryManager()
                   std::placeholders::_1, std::placeholders::_2),
         rclcpp::ServicesQoS(), service_cb_group_);
 
-    // === 创建装/卸货确认服务端 ===
-    // 使用 lambda 回调而非成员函数绑定，因为逻辑简单（仅设置原子标志）
-    // memory_order_release 确保标志的写入对其他线程立即可见
-    confirm_load_srv_ = this->create_service<std_srvs::srv::Trigger>(
-        "confirm_load",
-        [this](const std::shared_ptr<std_srvs::srv::Trigger::Request>,
-               std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-            load_confirmed_.store(true, std::memory_order_release);
-            response->success = true;
-            response->message = "装货确认已接收";
-            RCLCPP_INFO(get_logger(), "收到装货确认信号");
-        },
-        rclcpp::ServicesQoS(), service_cb_group_);
-
-    confirm_unload_srv_ = this->create_service<std_srvs::srv::Trigger>(
-        "confirm_unload",
-        [this](const std::shared_ptr<std_srvs::srv::Trigger::Request>,
-               std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-            unload_confirmed_.store(true, std::memory_order_release);
-            response->success = true;
-            response->message = "卸货确认已接收";
-            RCLCPP_INFO(get_logger(), "收到卸货确认信号");
-        },
-        rclcpp::ServicesQoS(), service_cb_group_);
+    // === 创建 ExecuteDelivery Action Client ===
+    // Phase 2: 配送执行委托给 delivery_executor 节点
+    delivery_action_client_ = rclcpp_action::create_client<ExecuteDelivery>(
+        this, "execute_delivery");
 
     RCLCPP_INFO(get_logger(), "DeliveryManager 节点已初始化");
 }
@@ -190,6 +170,13 @@ void DeliveryManager::run()
     if (!wait_for_tf())
     {
         RCLCPP_ERROR(get_logger(), "TF 链路不可用");
+        return;
+    }
+
+    // --- 准备阶段 5: 等待 delivery_executor Action Server ---
+    if (!wait_for_executor_server())
+    {
+        RCLCPP_ERROR(get_logger(), "ExecuteDelivery action server 不可用");
         return;
     }
 
@@ -254,174 +241,129 @@ void DeliveryManager::run()
 }
 
 /**
- * @brief 执行单个配送订单的完整流程。
+ * @brief 执行单个配送订单——通过 Action Client 调用 delivery_executor。
  *
- * 四阶段线性流程，每个阶段的进度值设定：
- * - 0.1: 开始前往取货点
- * - 0.3: 到达取货点，等待装货
- * - 0.5: 开始前往送货点
- * - 0.8: 到达送货点，等待卸货
- * - 1.0: 配送完成
- * 进度值的分配反映了实际时间占比的预估。
+ * Phase 2 重构：不再直接调用 Nav2 和等待确认，
+ * 而是将整个配送流程委托给 delivery_executor 的行为树执行。
  */
 bool DeliveryManager::execute_delivery(OrderRecord & record)
 {
     const auto & order = record.order;
 
-    // 查找取货和送货站点——虽然 handle_submit_order 中已做过验证，
-    // 这里再次检查是为了防御性编程（配置可能在运行中被意外修改）
-    auto pickup_it = stations_.find(order.pickup_station);
-    auto dropoff_it = stations_.find(order.dropoff_station);
+    // 构造 ExecuteDelivery Goal
+    auto goal = ExecuteDelivery::Goal();
+    goal.order = order;
 
-    if (pickup_it == stations_.end())
-    {
-        record.state = DeliveryState::kFailed;
-        record.error_msg = "取货站点不存在: " + order.pickup_station;
-        publish_status(order.order_id, DeliveryState::kFailed, "", 0.0f,
-                       record.error_msg);
-        return false;
-    }
-    if (dropoff_it == stations_.end())
-    {
-        record.state = DeliveryState::kFailed;
-        record.error_msg = "送货站点不存在: " + order.dropoff_station;
-        publish_status(order.order_id, DeliveryState::kFailed, "", 0.0f,
-                       record.error_msg);
-        return false;
-    }
-
-    const auto & pickup = pickup_it->second;
-    const auto & dropoff = dropoff_it->second;
-
-    // [阶段 1] 导航到取货点
-    // 先更新状态再执行导航，使外部监控能实时追踪
     record.state = DeliveryState::kGoingToPickup;
     publish_status(order.order_id, DeliveryState::kGoingToPickup,
-                   pickup.id, 0.1f);
+                   order.pickup_station, 0.1f);
 
-    if (!navigate_to(pickup.pose, "取货点 " + pickup.id))
+    // 配置回调
+    auto send_goal_options =
+        rclcpp_action::Client<ExecuteDelivery>::SendGoalOptions();
+
+    // Feedback 回调：更新状态发布
+    send_goal_options.feedback_callback =
+        [this, &record](ExecuteDeliveryGoalHandle::SharedPtr,
+                        const std::shared_ptr<const ExecuteDelivery::Feedback> feedback)
+    {
+        // executor 通过 ReportDeliveryStatus BT 节点已经发布了详细状态，
+        // 这里仅更新内部记录的 state
+        (void)feedback;
+    };
+
+    // 发送 Goal
+    RCLCPP_INFO(get_logger(), "向 executor 发送配送请求 [%s]",
+                order.order_id.c_str());
+
+    auto goal_future =
+        delivery_action_client_->async_send_goal(goal, send_goal_options);
+
+    if (goal_future.wait_for(10s) != std::future_status::ready)
     {
         record.state = DeliveryState::kFailed;
-        record.error_msg = "导航到取货点失败";
-        publish_status(order.order_id, DeliveryState::kFailed,
-                       pickup.id, 0.0f, record.error_msg);
+        record.error_msg = "发送配送目标超时";
+        publish_status(order.order_id, DeliveryState::kFailed, "", 0.0f,
+                       record.error_msg);
         return false;
     }
 
-    // [阶段 2] 等待装货确认
-    // 机器人到达取货点后停靠等待，人工通过 /confirm_load 服务触发确认
-    record.state = DeliveryState::kWaitingLoad;
-    publish_status(order.order_id, DeliveryState::kWaitingLoad,
-                   pickup.id, 0.3f);
-
-    if (!wait_for_confirmation("confirm_load", order.order_id,
-                               pickup.id, DeliveryState::kWaitingLoad))
+    auto goal_handle = goal_future.get();
+    if (!goal_handle)
     {
         record.state = DeliveryState::kFailed;
-        record.error_msg = "等待装货确认超时";
-        publish_status(order.order_id, DeliveryState::kFailed,
-                       pickup.id, 0.0f, record.error_msg);
+        record.error_msg = "配送目标被 executor 拒绝";
+        publish_status(order.order_id, DeliveryState::kFailed, "", 0.0f,
+                       record.error_msg);
         return false;
     }
 
-    // [阶段 3] 导航到送货点
-    record.state = DeliveryState::kGoingToDropoff;
-    publish_status(order.order_id, DeliveryState::kGoingToDropoff,
-                   dropoff.id, 0.5f);
+    // 保存 goal handle 以便取消
+    {
+        std::lock_guard<std::mutex> lock(goal_handle_mutex_);
+        current_goal_handle_ = goal_handle;
+    }
 
-    if (!navigate_to(dropoff.pose, "送货点 " + dropoff.id))
+    // 等待结果——总超时 = 2 * 导航超时 + 2 * 确认超时 + 余量
+    const double total_timeout =
+        2.0 * navigation_timeout_sec_ + 2.0 * wait_confirmation_timeout_sec_ + 60.0;
+    const std::chrono::duration<double> timeout(total_timeout);
+
+    auto result_future = delivery_action_client_->async_get_result(goal_handle);
+
+    if (result_future.wait_for(timeout) != std::future_status::ready)
     {
         record.state = DeliveryState::kFailed;
-        record.error_msg = "导航到送货点失败";
-        publish_status(order.order_id, DeliveryState::kFailed,
-                       dropoff.id, 0.0f, record.error_msg);
+        record.error_msg = "配送执行总超时";
+        publish_status(order.order_id, DeliveryState::kFailed, "", 0.0f,
+                       record.error_msg);
+
+        // 超时后取消 Goal
+        delivery_action_client_->async_cancel_goal(goal_handle);
+
+        {
+            std::lock_guard<std::mutex> lock(goal_handle_mutex_);
+            current_goal_handle_.reset();
+        }
         return false;
     }
 
-    // [阶段 4] 等待卸货确认
-    // 机器人到达送货点后停靠等待，人工通过 /confirm_unload 服务触发确认
-    record.state = DeliveryState::kWaitingUnload;
-    publish_status(order.order_id, DeliveryState::kWaitingUnload,
-                   dropoff.id, 0.8f);
-
-    if (!wait_for_confirmation("confirm_unload", order.order_id,
-                               dropoff.id, DeliveryState::kWaitingUnload))
+    // 清除 goal handle
     {
-        record.state = DeliveryState::kFailed;
-        record.error_msg = "等待卸货确认超时";
-        publish_status(order.order_id, DeliveryState::kFailed,
-                       dropoff.id, 0.0f, record.error_msg);
-        return false;
+        std::lock_guard<std::mutex> lock(goal_handle_mutex_);
+        current_goal_handle_.reset();
     }
 
-    // [完成] 所有阶段成功
-    record.state = DeliveryState::kComplete;
-    publish_status(order.order_id, DeliveryState::kComplete,
-                   dropoff.id, 1.0f);
-    return true;
+    const auto wrapped_result = result_future.get();
+
+    if (wrapped_result.code == rclcpp_action::ResultCode::SUCCEEDED &&
+        wrapped_result.result->success)
+    {
+        record.state = DeliveryState::kComplete;
+        RCLCPP_INFO(get_logger(), "订单 [%s] 由 executor 完成，耗时 %.1f 秒",
+                    order.order_id.c_str(),
+                    wrapped_result.result->elapsed_time_sec);
+        return true;
+    }
+
+    // 失败
+    record.state = DeliveryState::kFailed;
+    record.error_msg = wrapped_result.result ?
+        wrapped_result.result->error_msg : "executor 返回失败";
+    publish_status(order.order_id, DeliveryState::kFailed, "", 0.0f,
+                   record.error_msg);
+    return false;
 }
 
 /**
- * @brief 等待装/卸货确认的实现。
- *
- * 采用轮询（polling）模式而非条件变量（condition_variable），原因是：
- * 1. 确认信号来自 ROS 服务回调（跨回调组），条件变量需要额外的同步机制
- * 2. 轮询间隔 500ms 对用户操作场景完全可接受
- * 3. 实现简单，不易出错
+ * @brief 等待 /execute_delivery Action Server 可用。
  */
-bool DeliveryManager::wait_for_confirmation(
-    const std::string & confirm_service,
-    const std::string & order_id,
-    const std::string & station_id,
-    DeliveryState state)
+bool DeliveryManager::wait_for_executor_server()
 {
-    // 根据等待类型选择对应的原子标志变量
-    std::atomic<bool> & confirmed =
-        (state == DeliveryState::kWaitingLoad) ? load_confirmed_ : unload_confirmed_;
-
-    // 重置确认标志，防止上一次配送的残留信号被误读
-    // memory_order_release 确保重置操作在后续读取之前完成
-    confirmed.store(false, std::memory_order_release);
-
-    const std::string action_label =
-        (state == DeliveryState::kWaitingLoad) ? "装货" : "卸货";
-
-    // 日志中提示用户如何手动触发确认，方便调试
-    RCLCPP_INFO(get_logger(),
-        "订单 [%s] 在站点 [%s] 等待%s确认... (调用 ros2 service call /%s std_srvs/srv/Trigger)",
-        order_id.c_str(), station_id.c_str(), action_label.c_str(),
-        confirm_service.c_str());
-
-    // 使用 steady_clock（挂钟时间）计算超时，而非 ROS 时钟
-    // 原因：仿真时钟可能暂停或加速，挂钟时间更可靠
-    const auto start = std::chrono::steady_clock::now();
-    while (rclcpp::ok())
-    {
-        // memory_order_acquire 确保读取到最新的标志值
-        if (confirmed.load(std::memory_order_acquire))
-        {
-            RCLCPP_INFO(get_logger(), "订单 [%s] %s确认完成",
-                        order_id.c_str(), action_label.c_str());
-            return true;
-        }
-
-        // 检查是否超时
-        const auto elapsed = std::chrono::steady_clock::now() - start;
-        if (std::chrono::duration_cast<std::chrono::duration<double>>(elapsed)
-                .count() > wait_confirmation_timeout_sec_)
-        {
-            RCLCPP_WARN(get_logger(),
-                "订单 [%s] %s确认超时 (%.0f 秒)",
-                order_id.c_str(), action_label.c_str(),
-                wait_confirmation_timeout_sec_);
-            return false;
-        }
-
-        // 500ms 轮询间隔：在响应速度和 CPU 占用之间取得平衡
-        rclcpp::sleep_for(500ms);
-    }
-    // 节点关闭时退出循环
-    return false;
+    RCLCPP_INFO(get_logger(), "等待 ExecuteDelivery action server...");
+    const std::chrono::duration<double> timeout(action_server_wait_timeout_sec_);
+    return delivery_action_client_->wait_for_action_server(
+        std::chrono::duration_cast<std::chrono::milliseconds>(timeout));
 }
 
 // ======================== 服务回调实现 ========================
@@ -562,9 +504,21 @@ void DeliveryManager::handle_cancel_order(
     }
     else
     {
-        // 可能的原因：订单正在执行、已完成、或从未提交过
-        response->success = false;
-        response->reason = "订单不在队列中（可能已在执行或已完成）";
+        // 尝试取消正在执行中的订单
+        std::lock_guard<std::mutex> gh_lock(goal_handle_mutex_);
+        if (current_goal_handle_)
+        {
+            RCLCPP_INFO(get_logger(), "取消执行中的订单 [%s]",
+                        request->order_id.c_str());
+            delivery_action_client_->async_cancel_goal(current_goal_handle_);
+            response->success = true;
+            response->reason = "已发送取消请求到 executor";
+        }
+        else
+        {
+            response->success = false;
+            response->reason = "订单不在队列中（可能已完成或从未提交）";
+        }
     }
 }
 
@@ -815,101 +769,6 @@ void DeliveryManager::publish_initial_pose()
         initial_pose_pub_->publish(msg);
         rclcpp::sleep_for(200ms);
     }
-}
-
-// ======================== 导航（复用 Ros2Learning/task_runner 模式）========================
-
-/**
- * @brief 构造 PoseStamped 消息的实现。
- *
- * 将简化的 Pose2D 转换为完整的 ROS PoseStamped：
- * - 添加 frame_id（map 坐标系）和当前时间戳
- * - 将 yaw 欧拉角转换为四元数（Nav2 要求四元数表示朝向）
- */
-DeliveryManager::PoseStamped DeliveryManager::make_pose(const Pose2D & pose) const
-{
-    PoseStamped msg;
-    msg.header.frame_id = map_frame_;
-    msg.header.stamp = this->now();
-    msg.pose.position.x = pose.x;
-    msg.pose.position.y = pose.y;
-
-    tf2::Quaternion q;
-    q.setRPY(0.0, 0.0, pose.yaw);
-    msg.pose.orientation = tf2::toMsg(q);
-
-    return msg;
-}
-
-/**
- * @brief 导航到指定位姿的实现。
- *
- * 完整的 Action 调用流程：
- * 1. 构造目标并发送（async_send_goal）
- * 2. 等待目标被接受（5 秒超时）
- * 3. 等待导航完成（navigation_timeout_sec_ 超时）
- * 4. 超时则发送取消指令
- *
- * feedback_callback 使用 RCLCPP_INFO_THROTTLE 限制日志频率为 2 秒一次，
- * 避免导航过程中日志刷屏。
- */
-bool DeliveryManager::navigate_to(const Pose2D & pose, const std::string & label)
-{
-    // 构造导航目标
-    NavigateToPose::Goal goal_msg;
-    goal_msg.pose = make_pose(pose);
-
-    // 配置 Action 发送选项
-    auto send_goal_options =
-        rclcpp_action::Client<NavigateToPose>::SendGoalOptions();
-
-    // 设置导航过程中的反馈回调：每 2 秒打印一次剩余距离
-    send_goal_options.feedback_callback =
-        [this, label](GoalHandle::SharedPtr,
-                      const std::shared_ptr<const NavigateToPose::Feedback> feedback)
-    {
-        // RCLCPP_INFO_THROTTLE 在指定时间窗口内只打印一次，避免日志刷屏
-        RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000,
-                             "[%s] 剩余距离: %.2f 米", label.c_str(),
-                             feedback->distance_remaining);
-    };
-
-    // 异步发送导航目标
-    auto goal_future =
-        action_client_->async_send_goal(goal_msg, send_goal_options);
-
-    // 等待目标被 Action Server 接受
-    // executor 在后台线程 spin，会自动处理 goal response，无需手动 spin
-    if (goal_future.wait_for(5s) != std::future_status::ready)
-    {
-        RCLCPP_ERROR(get_logger(), "[%s] 目标发送超时", label.c_str());
-        return false;
-    }
-
-    auto goal_handle = goal_future.get();
-    if (!goal_handle)
-    {
-        // Action Server 拒绝了目标（可能是目标点不可达或参数无效）
-        RCLCPP_ERROR(get_logger(), "[%s] 导航目标被拒绝", label.c_str());
-        return false;
-    }
-
-    // 异步等待导航结果
-    auto result_future = action_client_->async_get_result(goal_handle);
-    const std::chrono::duration<double> timeout(navigation_timeout_sec_);
-
-    if (result_future.wait_for(timeout) == std::future_status::ready)
-    {
-        const auto wrapped_result = result_future.get();
-        // 只有 SUCCEEDED 才算导航成功，ABORTED/CANCELED 都视为失败
-        return (wrapped_result.code == rclcpp_action::ResultCode::SUCCEEDED);
-    }
-
-    // 导航超时：主动发送取消指令，避免 Nav2 继续执行过时的目标
-    RCLCPP_WARN(get_logger(), "[%s] 导航超时，发送取消指令...", label.c_str());
-    auto cancel_future = action_client_->async_cancel_goal(goal_handle);
-    cancel_future.wait_for(5s);  // 等待取消响应，但不关心结果
-    return false;
 }
 
 // ======================== 状态管理 ========================

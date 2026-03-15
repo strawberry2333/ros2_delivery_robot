@@ -77,16 +77,39 @@ def generate_launch_description():
     # initial_yaw: 初始朝向角（单位：弧度），默认 0.0，范围 [-pi, pi]
     initial_yaw_arg = DeclareLaunchArgument("initial_yaw", default_value="0.0")
 
+    # 获取 delivery_core 包的 share 目录路径（用于查找行为树 XML）
+    core_share = FindPackageShare("delivery_core")
+
+    # 行为树 XML 文件路径
+    default_tree_file = PathJoinSubstitution(
+        [core_share, "behavior_trees", "single_delivery.xml"]
+    )
+
+    # --- delivery_executor 节点配置（BT 宿主，必须在 manager 之前启动） ---
+    delivery_executor = Node(
+        package="delivery_core",
+        executable="delivery_executor",
+        name="delivery_executor",
+        output="screen",
+        parameters=[
+            {
+                "station_config": LaunchConfiguration("station_config"),
+                "use_sim_time": LaunchConfiguration("use_sim_time"),
+                "tree_file": default_tree_file,
+            },
+        ],
+    )
+
     # --- delivery_manager 节点配置 ---
     # 节点参数加载顺序：
     #   1. 先加载 default_params_file（delivery_manager.yaml）中的全部参数
     #   2. 再用字典中的 LaunchConfiguration 值覆盖同名参数
     # 这样用户既可以修改 YAML 文件设置默认值，也可以通过命令行临时覆盖
     delivery_manager = Node(
-        package="delivery_core",          # 节点所在的 ROS2 包
-        executable="delivery_manager",    # 可执行文件名称
-        name="delivery_manager",          # 节点名称（覆盖代码中设置的默认名称）
-        output="screen",                  # 输出方式：screen 表示将日志打印到终端
+        package="delivery_core",
+        executable="delivery_manager",
+        name="delivery_manager",
+        output="screen",
         parameters=[
             # 第一层：从 YAML 文件加载基础参数
             default_params_file,
@@ -111,7 +134,8 @@ def generate_launch_description():
             initial_x_arg,
             initial_y_arg,
             initial_yaw_arg,
-            # 启动配送管理节点
+            # 先启动 executor（提供 Action Server），再启动 manager
+            delivery_executor,
             delivery_manager,
         ]
     )

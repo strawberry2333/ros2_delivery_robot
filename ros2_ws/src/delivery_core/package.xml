@@ -54,6 +54,9 @@
   <!-- YAML 解析库（读取 stations.yaml 站点配置） -->
   <depend>yaml-cpp</depend>
 
+  <!-- BehaviorTree.CPP v4（Phase 2 行为树驱动配送执行） -->
+  <depend>behaviortree_cpp</depend>
+
   <export>
     <!-- 声明构建类型为 ament_cmake -->
     <build_type>ament_cmake</build_type>

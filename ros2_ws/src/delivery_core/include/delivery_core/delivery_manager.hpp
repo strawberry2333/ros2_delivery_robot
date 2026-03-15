@@ -8,12 +8,10 @@
  * 状态机: kIdle → kGoingToPickup → kWaitingLoad → kGoingToDropoff → kWaitingUnload → kComplete
  *
  * 设计思路：
- * - 本节点是配送系统的中枢调度器，采用"单线程配送循环 + 多线程回调"的架构。
- *   主线程负责按序执行配送任务（导航→等待确认→导航→等待确认），
- *   ROS 回调（订单提交、取消、报告查询、装卸货确认）在 MultiThreadedExecutor
- *   的后台线程中并发处理，通过互斥锁和原子变量与主线程安全交互。
- * - 状态机设计为线性流程，每个订单独立执行，任一阶段失败即标记为 kFailed。
- *   Phase 2 将引入行为树替代当前的线性状态机，支持更灵活的重试和恢复策略。
+ * - 本节点是配送系统的中枢调度器，负责订单队列管理和配送调度。
+ *   实际配送执行委托给 delivery_executor 节点（通过 ExecuteDelivery Action）。
+ * - ROS 回调（订单提交、取消、报告查询）在 MultiThreadedExecutor
+ *   的后台线程中并发处理，通过互斥锁与主线程安全交互。
  */
 
 #include <deque>
@@ -30,15 +28,15 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/pose_with_covariance_stamped.hpp"
 #include "nav2_msgs/action/navigate_to_pose.hpp"    // Nav2 导航 Action 接口
-#include "std_srvs/srv/trigger.hpp"                  // 通用触发服务，用于装卸货确认
 
-// 项目自定义消息/服务接口
+// 项目自定义消息/服务/动作接口
 #include "delivery_interfaces/msg/delivery_order.hpp"
 #include "delivery_interfaces/msg/delivery_status.hpp"
 #include "delivery_interfaces/msg/station_info.hpp"
 #include "delivery_interfaces/srv/submit_order.hpp"
 #include "delivery_interfaces/srv/cancel_order.hpp"
 #include "delivery_interfaces/srv/get_delivery_report.hpp"
+#include "delivery_interfaces/action/execute_delivery.hpp"
 
 // YAML 配置文件解析库
 #include "yaml-cpp/yaml.h"
@@ -70,6 +68,8 @@ public:
     using DeliveryOrder = delivery_interfaces::msg::DeliveryOrder;         ///< 配送订单消息
     using DeliveryStatus = delivery_interfaces::msg::DeliveryStatus;       ///< 配送状态消息
     using StationInfo = delivery_interfaces::msg::StationInfo;             ///< 站点信息消息
+    using ExecuteDelivery = delivery_interfaces::action::ExecuteDelivery;  ///< 配送执行 Action 类型
+    using ExecuteDeliveryGoalHandle = rclcpp_action::ClientGoalHandle<ExecuteDelivery>; ///< 配送 Action Goal 句柄
 
     /**
      * @brief 构造函数，初始化所有参数、通信接口和回调组。
@@ -229,34 +229,6 @@ private:
      */
     void publish_initial_pose();
 
-    // ====== 导航 ======
-
-    /**
-     * @brief 构造 PoseStamped 消息。
-     *
-     * 将内部 Pose2D 结构转换为 ROS 标准 PoseStamped 消息，
-     * 包括将偏航角转换为四元数。
-     *
-     * @param[in] pose 2D 位姿（x, y, yaw）。
-     * @return 填充了 frame_id、时间戳和完整位姿的 PoseStamped 消息。
-     */
-    PoseStamped make_pose(const Pose2D & pose) const;
-
-    /**
-     * @brief 导航到指定位姿（阻塞式调用 Nav2）。
-     *
-     * 向 Nav2 的 navigate_to_pose action server 发送导航目标，
-     * 阻塞等待导航完成或超时。导航过程中会通过 feedback 回调
-     * 以 2 秒间隔打印剩余距离日志。
-     *
-     * @param[in] pose 目标位姿。
-     * @param[in] label 日志标签，用于区分是前往取货点还是送货点。
-     * @return 导航成功到达目标返回 true；目标被拒绝、导航失败或超时返回 false。
-     *
-     * @note 超时后会发送取消指令，避免 Nav2 继续执行过时的导航目标。
-     */
-    bool navigate_to(const Pose2D & pose, const std::string & label);
-
     // ====== 状态管理 ======
 
     /**
@@ -311,25 +283,14 @@ private:
     bool execute_delivery(OrderRecord & record);
 
     /**
-     * @brief 等待外部装/卸货确认服务调用。
+     * @brief 等待 /execute_delivery Action Server 可用。
      *
-     * 轮询检查对应的原子标志（load_confirmed_ 或 unload_confirmed_），
-     * 直到标志被设置为 true（由确认服务回调触发）或超时。
-     * 使用 steady_clock 计算超时，避免仿真时钟不均匀导致的误判。
+     * delivery_executor 启动后才会注册 Action Server，
+     * 本方法阻塞等待其可用。
      *
-     * @param[in] confirm_service 确认服务名称（"confirm_load" 或 "confirm_unload"），用于日志提示。
-     * @param[in] order_id 订单 ID，用于日志标识。
-     * @param[in] station_id 当前停靠的站点 ID，用于日志标识。
-     * @param[in] state 当前等待状态（kWaitingLoad 或 kWaitingUnload），
-     *                  用于选择对应的原子标志变量。
-     * @return 收到确认返回 true；超时（wait_confirmation_timeout_sec_）或节点关闭返回 false。
-     *
-     * @note 在等待前会重置确认标志为 false，防止上一次残留的确认信号被误读。
+     * @return Action Server 可用返回 true；超时返回 false。
      */
-    bool wait_for_confirmation(const std::string & confirm_service,
-                               const std::string & order_id,
-                               const std::string & station_id,
-                               DeliveryState state);
+    bool wait_for_executor_server();
 
     // ====== 服务回调 ======
 
@@ -409,11 +370,10 @@ private:
     rclcpp::Service<delivery_interfaces::srv::CancelOrder>::SharedPtr cancel_order_srv_;      ///< 订单取消服务端 (/cancel_order)
     rclcpp::Service<delivery_interfaces::srv::GetDeliveryReport>::SharedPtr get_report_srv_;  ///< 配送报告查询服务端 (/get_delivery_report)
 
-    // ====== 确认服务端（模拟人工确认）======
-    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr confirm_load_srv_;    ///< 装货确认服务端 (/confirm_load)
-    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr confirm_unload_srv_;  ///< 卸货确认服务端 (/confirm_unload)
-    std::atomic<bool> load_confirmed_{false};     ///< 装货确认原子标志，由 /confirm_load 服务回调设置，由 wait_for_confirmation() 轮询读取
-    std::atomic<bool> unload_confirmed_{false};   ///< 卸货确认原子标志，由 /confirm_unload 服务回调设置，由 wait_for_confirmation() 轮询读取
+    // ====== 配送执行 Action Client ======
+    rclcpp_action::Client<ExecuteDelivery>::SharedPtr delivery_action_client_; ///< ExecuteDelivery Action Client，调用 executor
+    ExecuteDeliveryGoalHandle::SharedPtr current_goal_handle_;                 ///< 当前正在执行的配送 Goal 句柄（用于取消）
+    std::mutex goal_handle_mutex_;                                             ///< 保护 current_goal_handle_ 的互斥锁
 
     // ====== 回调组 ======
     /**

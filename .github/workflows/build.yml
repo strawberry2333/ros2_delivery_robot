@@ -34,6 +34,7 @@ jobs:
             ros-jazzy-ament-lint-auto \
             ros-jazzy-ament-cmake-lint-cmake \
             ros-jazzy-ament-cmake-xmllint \
+            ros-jazzy-behaviortree-cpp \
             libyaml-cpp-dev
 
       - name: Checkout
