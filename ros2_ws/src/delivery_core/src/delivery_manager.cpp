@@ -350,17 +350,41 @@ void DeliveryManager::handle_submit_order(
 {
     const auto & order = request->order;
 
+    // 验证 order_id 非空
+    if (order.order_id.empty())
+    {
+        response->accepted = false;
+        response->reason = "order_id 不能为空";
+        return;
+    }
+
     // 验证站点存在
-    if (stations_.find(order.pickup_station) == stations_.end())
+    auto pickup_it = stations_.find(order.pickup_station);
+    if (pickup_it == stations_.end())
     {
         response->accepted = false;
         response->reason = "取货站点不存在: " + order.pickup_station;
         return;
     }
-    if (stations_.find(order.dropoff_station) == stations_.end())
+    auto dropoff_it = stations_.find(order.dropoff_station);
+    if (dropoff_it == stations_.end())
     {
         response->accepted = false;
         response->reason = "送货站点不存在: " + order.dropoff_station;
+        return;
+    }
+
+    // 验证站点类型：取货站应为 pickup(0)，送货站应为 dropoff(1)
+    if (pickup_it->second.type == 1)
+    {
+        response->accepted = false;
+        response->reason = "站点 " + order.pickup_station + " 是送货站，不能作为取货点";
+        return;
+    }
+    if (dropoff_it->second.type == 0)
+    {
+        response->accepted = false;
+        response->reason = "站点 " + order.dropoff_station + " 是取货站，不能作为送货点";
         return;
     }
 
@@ -371,6 +395,26 @@ void DeliveryManager::handle_submit_order(
 
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
+
+        // 检查重复 order_id
+        for (const auto & existing : order_queue_)
+        {
+            if (existing.order.order_id == order.order_id)
+            {
+                response->accepted = false;
+                response->reason = "订单 ID 重复: " + order.order_id;
+                return;
+            }
+        }
+        for (const auto & existing : completed_orders_)
+        {
+            if (existing.order.order_id == order.order_id)
+            {
+                response->accepted = false;
+                response->reason = "订单 ID 已存在于历史记录: " + order.order_id;
+                return;
+            }
+        }
 
         // 按优先级插入（高优先级在前）
         auto it = order_queue_.begin();
