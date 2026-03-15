@@ -4,6 +4,22 @@
 
 机器人接收配送订单后，自主导航至取货站点等待装货确认，再导航至送货站点等待卸货确认。支持多订单优先级队列、导航失败重试、生命周期管理。
 
+## 目录
+
+- [典型应用场景](#典型应用场景)
+- [技术栈](#技术栈)
+- [系统架构](#系统架构)
+  - [包结构](#包结构)
+  - [节点与通信拓扑](#节点与通信拓扑)
+  - [配送状态机](#配送状态机)
+  - [自定义接口](#自定义接口)
+  - [行为树架构](#行为树架构-phase-2)
+  - [生命周期管理](#生命周期管理)
+- [构建与运行](#构建与运行)
+- [站点配置](#站点配置)
+- [设计决策](#设计决策)
+- [开发进度](#开发进度)
+
 ## 典型应用场景
 
 - 仓库内部物料配送（工位间转运零件）
@@ -37,74 +53,66 @@ ros2_ws/src/
 
 ### 节点与通信拓扑
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                        delivery_bringup                             │
-│  demo.launch.py  ──→  simulation + navigation + delivery 分层启动   │
-└──────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph 外部操作
+        User["操作员 / 上位机"]
+    end
 
-                    ┌─────────────────────┐
-                    │  delivery_manager   │
-                    │  (订单队列 + 编排)   │
-                    └──┬──────┬──────┬────┘
-       SubmitOrder.srv │      │      │ GetDeliveryReport.srv
-       CancelOrder.srv │      │      │
-                       ▼      │      ▼
-                   外部调用    │   外部查询
-                              │
-              ExecuteDelivery  │  .action (Phase 2)
-                              ▼
-                    ┌─────────────────────┐
-                    │ delivery_executor   │
-                    │ (BT 宿主, Phase 2)  │
-                    └──┬──────┬──────┬────┘
-                       │      │      │
-          NavigateToStation    │   WaitForConfirmation
-          (Nav2 Action)       │   (等待 confirm_load /
-                              │    confirm_unload 服务)
-                              │
-                              ▼
-                    ┌─────────────────────┐
-                    │   /delivery_status  │  Topic (DeliveryStatus)
-                    │   实时状态广播       │
-                    └─────────────────────┘
+    subgraph delivery_bringup
+        Launch["demo.launch.py<br/>分层启动"]
+    end
+
+    subgraph Nav2
+        NavStack["Nav2 导航栈<br/>navigate_to_pose Action Server"]
+    end
+
+    subgraph delivery_core
+        Manager["delivery_manager<br/>订单队列 + 状态机编排"]
+        Executor["delivery_executor<br/>BT 宿主 (Phase 2)"]
+    end
+
+    subgraph delivery_lifecycle
+        LCM["delivery_lifecycle_manager<br/>节点启动顺序编排"]
+    end
+
+    StatusTopic["/delivery_status<br/>Topic: DeliveryStatus"]
+
+    User -- "SubmitOrder.srv<br/>CancelOrder.srv" --> Manager
+    User -- "confirm_load / confirm_unload<br/>Trigger.srv" --> Executor
+    User -- "GetDeliveryReport.srv" --> Manager
+
+    Manager -- "ExecuteDelivery.action<br/>Goal + Cancel" --> Executor
+    Executor -- "Feedback<br/>state, progress" --> Manager
+    Executor -- "NavigateToPose.action" --> NavStack
+    Manager -- "发布状态" --> StatusTopic
+
+    Launch -.-> NavStack
+    Launch -.-> Manager
+    Launch -.-> Executor
+    LCM -. "configure / activate" .-> Executor
 ```
 
 ### 配送状态机
 
 单个订单的生命周期：
 
-```
-         ┌──────┐
-         │ Idle │  等待订单分配
-         └──┬───┘
-            │  取到订单
-            ▼
-  ┌─────────────────┐
-  │ GoingToPickup   │  Nav2 导航到取货站点
-  └────────┬────────┘
-           │  到达
-           ▼
-  ┌─────────────────┐
-  │ WaitingLoad     │  等待 /confirm_load 服务调用（或超时自动继续）
-  └────────┬────────┘
-           │  确认装货
-           ▼
-  ┌─────────────────┐
-  │ GoingToDropoff  │  Nav2 导航到送货站点
-  └────────┬────────┘
-           │  到达
-           ▼
-  ┌─────────────────┐
-  │ WaitingUnload   │  等待 /confirm_unload 服务调用（或超时自动继续）
-  └────────┬────────┘
-           │  确认卸货
-           ▼
-  ┌─────────────────┐
-  │ Complete        │  订单完成，取下一个
-  └─────────────────┘
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
 
-  任意阶段导航失败 → Failed（Phase 3 加入重试）
+    Idle --> GoingToPickup : 取到订单
+    GoingToPickup --> WaitingLoad : 到达取货点
+    GoingToPickup --> Failed : 导航失败
+
+    WaitingLoad --> GoingToDropoff : confirm_load 确认<br/>或超时自动继续
+    GoingToDropoff --> WaitingUnload : 到达送货点
+    GoingToDropoff --> Failed : 导航失败
+
+    WaitingUnload --> Complete : confirm_unload 确认<br/>或超时自动继续
+    Complete --> Idle : 取下一个订单
+
+    Failed --> Idle : 跳到下一个订单<br/>(Phase 3 加入重试)
 ```
 
 ### 自定义接口
@@ -135,27 +143,39 @@ ros2_ws/src/
 
 BT 负责单次配送内的决策流程，状态机负责订单级别的队列管理：
 
-```
-delivery_manager (状态机)           delivery_executor (BT 宿主)
-┌──────────────────────┐           ┌──────────────────────────────┐
-│  订单队列管理         │           │  single_delivery.xml          │
-│  优先级排序           │  Action   │                              │
-│  依次分发订单    ────────────→   │  Sequence                    │
-│  汇总配送报告         │  Goal     │  ├── NavigateToStation(取货)  │
-│                      │           │  ├── DockAtStation            │
-│                      │  Feedback │  ├── WaitForConfirmation(装货)│
-│  更新 delivery_status ◄──────── │  ├── NavigateToStation(送货)  │
-│                      │           │  ├── DockAtStation            │
-└──────────────────────┘           │  └── WaitForConfirmation(卸货)│
-                                   └──────────────────────────────┘
+```mermaid
+graph LR
+    subgraph delivery_manager
+        Queue["订单队列管理<br/>优先级排序<br/>依次分发"]
+    end
+
+    subgraph delivery_executor ["delivery_executor — single_delivery.xml"]
+        direction TB
+        Seq["Sequence"]
+        Nav1["NavigateToStation<br/>取货点"]
+        Dock1["DockAtStation"]
+        Wait1["WaitForConfirmation<br/>装货"]
+        Nav2["NavigateToStation<br/>送货点"]
+        Dock2["DockAtStation"]
+        Wait2["WaitForConfirmation<br/>卸货"]
+        Report["ReportDeliveryStatus<br/>Complete"]
+
+        Seq --> Nav1 --> Dock1 --> Wait1 --> Nav2 --> Dock2 --> Wait2 --> Report
+    end
+
+    Queue -- "ExecuteDelivery.action<br/>Goal" --> Seq
+    Report -- "Feedback / Result" --> Queue
 ```
 
 ### 生命周期管理
 
 `delivery_lifecycle_manager` 编排节点启动顺序，确保依赖就绪后再激活下游：
 
-```
-Gazebo 仿真就绪 → Nav2 导航栈 Active → delivery_executor activate → delivery_manager 开始接单
+```mermaid
+graph LR
+    A["Gazebo 仿真就绪"] --> B["Nav2 导航栈 Active"]
+    B --> C["delivery_executor<br/>activate"]
+    C --> D["delivery_manager<br/>开始接单"]
 ```
 
 ## 构建与运行
