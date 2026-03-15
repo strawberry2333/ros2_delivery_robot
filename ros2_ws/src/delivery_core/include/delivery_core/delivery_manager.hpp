@@ -200,7 +200,7 @@ private:
      * @param[in] order_id 订单 ID。
      * @param[in] station_id 站点 ID。
      * @param[in] state 当前状态 (kWaitingLoad 或 kWaitingUnload)。
-     * @return 确认成功返回 true，超时返回 false。
+     * @return 收到确认返回 true，超时或节点关闭返回 false。
      */
     bool wait_for_confirmation(const std::string & confirm_service,
                                const std::string & order_id,

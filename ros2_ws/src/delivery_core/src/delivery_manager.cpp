@@ -331,10 +331,10 @@ bool DeliveryManager::wait_for_confirmation(
                 .count() > wait_confirmation_timeout_sec_)
         {
             RCLCPP_WARN(get_logger(),
-                "订单 [%s] %s确认超时 (%.0f 秒)，自动继续",
+                "订单 [%s] %s确认超时 (%.0f 秒)",
                 order_id.c_str(), action_label.c_str(),
                 wait_confirmation_timeout_sec_);
-            return true;  // 超时自动继续，不阻塞后续订单
+            return false;  // 超时视为失败，与头文件注释语义一致
         }
 
         rclcpp::sleep_for(500ms);
