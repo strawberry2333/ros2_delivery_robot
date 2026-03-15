@@ -4,6 +4,10 @@
 
 与用户沟通时尽量使用中文回复。代码评审保持专业，直指问题。
 
+## Repository
+
+- **本项目**: https://github.com/strawberry2333/ros2_delivery_robot
+
 ## Project Overview
 
 **一句话：** 室内多点配送机器人——接收配送订单，自主导航至取货点等待装货确认，再导航至送货点等待卸货确认，支持多订单队列和失败重试。
