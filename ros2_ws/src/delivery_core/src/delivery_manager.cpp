@@ -528,6 +528,21 @@ bool DeliveryManager::load_station_config(const std::string & path)
         station.pose.yaw = node["yaw"] ? node["yaw"].as<double>() : 0.0;
         station.type = node["station_type"] ? node["station_type"].as<uint8_t>() : 0;
 
+        // 校验 station_type 合法性 (0=pickup, 1=dropoff, 2=charge)
+        if (station.type > 2)
+        {
+            RCLCPP_ERROR(get_logger(), "站点 [%s] 类型非法: %u (应为 0/1/2)",
+                         station.id.c_str(), station.type);
+            return false;
+        }
+
+        // 校验 station_id 不重复
+        if (stations_.count(station.id) > 0)
+        {
+            RCLCPP_ERROR(get_logger(), "站点 ID 重复: %s", station.id.c_str());
+            return false;
+        }
+
         stations_[station.id] = station;
         RCLCPP_INFO(get_logger(), "  站点 [%s]: (%.2f, %.2f, %.2f) 类型=%u",
                     station.id.c_str(), station.pose.x, station.pose.y,
