@@ -1,0 +1,5 @@
+# 取消配送订单服务
+string order_id
+---
+bool success
+string reason

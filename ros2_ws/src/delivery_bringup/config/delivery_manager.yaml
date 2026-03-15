@@ -1,0 +1,16 @@
+# delivery_manager 节点参数
+delivery_manager:
+  ros__parameters:
+    use_sim_time: true
+    map_frame: "map"
+    base_frame: "base_link"
+    nav2_action_name: "navigate_to_pose"
+    station_config: ""                     # 由 launch 文件注入
+    clock_wait_timeout_sec: 30.0
+    tf_wait_timeout_sec: 15.0
+    navigation_timeout_sec: 120.0
+    wait_confirmation_timeout_sec: 60.0    # 等待装/卸货确认的超时时间
+    publish_initial_pose: true
+    initial_x: 0.0
+    initial_y: 0.0
+    initial_yaw: 0.0

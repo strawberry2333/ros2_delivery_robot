@@ -1,0 +1,5 @@
+# 提交配送订单服务
+delivery_interfaces/DeliveryOrder order
+---
+bool accepted
+string reason

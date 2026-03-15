@@ -1,0 +1,13 @@
+# 执行单次配送的动作定义
+# Goal: 配送订单
+delivery_interfaces/DeliveryOrder order
+---
+# Result: 配送结果
+bool success
+float64 elapsed_time_sec
+string error_msg
+---
+# Feedback: 实时状态
+uint8 state
+string current_station
+float32 progress

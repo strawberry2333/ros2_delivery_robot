@@ -1,0 +1,4 @@
+# 获取配送报告服务
+# 返回所有已完成和进行中的配送状态
+---
+delivery_interfaces/DeliveryStatus[] reports

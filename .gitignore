@@ -1,0 +1,17 @@
+# Colcon
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Compile databases
+compile_commands.json
+
+# Python
+__pycache__/
+*.pyc
