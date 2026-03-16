@@ -2,14 +2,17 @@
 
 /**
  * @file delivery_executor.hpp
- * @brief 配送执行器节点声明（BT 宿主）。
+ * @brief 配送执行器生命周期节点声明（BT 宿主）。
  *
  * 作为 ExecuteDelivery Action Server，接收 delivery_manager 发来的配送请求，
  * 使用 BehaviorTree.CPP 驱动行为树执行完整的配送流程。
  *
- * 架构：
- *   delivery_manager (Action Client) → /execute_delivery → delivery_executor (Action Server)
- *     └→ BehaviorTree: NavigateToStation → DockAtStation → ReportStatus → WaitForConfirmation × 2
+ * Phase 3: 转为 LifecycleNode，由 lifecycle_manager 管理启动顺序。
+ * 生命周期：
+ *   Unconfigured → on_configure (加载站点、注册 BT) → Inactive
+ *   Inactive → on_activate (创建 Action Server) → Active
+ *   Active → on_deactivate (停止 BT、销毁 Action Server) → Inactive
+ *   Inactive → on_cleanup (清除数据) → Unconfigured
  */
 
 #include <atomic>
@@ -22,6 +25,7 @@
 #include "nav2_msgs/action/navigate_to_pose.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
+#include "rclcpp_lifecycle/lifecycle_node.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
 #include "delivery_interfaces/action/execute_delivery.hpp"
@@ -33,25 +37,23 @@
 namespace delivery_core
 {
 
-/**
- * @brief 配送执行器节点
- *
- * 核心职责：
- * 1. 作为 /execute_delivery Action Server 接收配送请求
- * 2. 从 YAML 加载站点配置
- * 3. 注册 BT 节点并从 XML 文件创建行为树
- * 4. 驱动 BT tick 循环完成配送
- * 5. 持有 confirm_load/confirm_unload 服务端
- */
-class DeliveryExecutor : public rclcpp::Node
+class DeliveryExecutor : public rclcpp_lifecycle::LifecycleNode
 {
 public:
     using ExecuteDelivery = delivery_interfaces::action::ExecuteDelivery;
     using GoalHandleExecuteDelivery = rclcpp_action::ServerGoalHandle<ExecuteDelivery>;
     using NavigateToPose = nav2_msgs::action::NavigateToPose;
     using DeliveryStatus = delivery_interfaces::msg::DeliveryStatus;
+    using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
     DeliveryExecutor();
+
+    // ====== 生命周期回调 ======
+    CallbackReturn on_configure(const rclcpp_lifecycle::State & state) override;
+    CallbackReturn on_activate(const rclcpp_lifecycle::State & state) override;
+    CallbackReturn on_deactivate(const rclcpp_lifecycle::State & state) override;
+    CallbackReturn on_cleanup(const rclcpp_lifecycle::State & state) override;
+    CallbackReturn on_shutdown(const rclcpp_lifecycle::State & state) override;
 
 private:
     // ====== 配置加载 ======
@@ -77,6 +79,10 @@ private:
     // ====== ROS 参数 ======
     std::string station_config_path_;
     std::string tree_file_path_;
+    double battery_drain_per_delivery_{15.0};
+
+    // ====== 电池模拟 ======
+    double battery_level_{100.0};
 
     // ====== 站点数据 ======
     StationMap stations_;
@@ -90,6 +96,11 @@ private:
 
     // ====== 执行状态 ======
     std::atomic<bool> executing_{false};
+
+    // ====== 辅助节点 ======
+    /// BT 节点需要 rclcpp::Node::SharedPtr（LifecycleNode 不继承自 Node），
+    /// 因此创建一个轻量辅助节点供 BT 节点使用
+    rclcpp::Node::SharedPtr bt_node_;
 
     // ====== ROS 通信接口 ======
     rclcpp_action::Server<ExecuteDelivery>::SharedPtr action_server_;

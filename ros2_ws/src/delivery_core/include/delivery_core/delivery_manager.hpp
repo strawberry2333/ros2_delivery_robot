@@ -16,6 +16,7 @@
 
 #include <deque>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -117,7 +118,8 @@ private:
         kGoingToDropoff,   ///< 正在前往送货站点（Nav2 导航中）
         kWaitingUnload,    ///< 到达送货点，等待人工卸货确认（通过 /confirm_unload 服务触发）
         kComplete,         ///< 当前订单配送完成（全部阶段成功）
-        kFailed            ///< 当前订单配送失败（导航失败、确认超时等）
+        kFailed,           ///< 当前订单配送失败（导航失败、确认超时等）
+        kCanceled          ///< 当前订单在执行中被用户取消
     };
 
     /**
@@ -374,6 +376,11 @@ private:
     rclcpp_action::Client<ExecuteDelivery>::SharedPtr delivery_action_client_; ///< ExecuteDelivery Action Client，调用 executor
     ExecuteDeliveryGoalHandle::SharedPtr current_goal_handle_;                 ///< 当前正在执行的配送 Goal 句柄（用于取消）
     std::mutex goal_handle_mutex_;                                             ///< 保护 current_goal_handle_ 的互斥锁
+
+    // ====== 当前执行中的订单追踪 ======
+    std::string current_order_id_;                                             ///< 当前正在执行的订单 ID（空字符串表示无执行中订单）
+    std::optional<OrderRecord> current_order_;                                 ///< 当前正在执行的订单记录（用于报告查询）
+    std::mutex current_order_mutex_;                                           ///< 保护 current_order_id_ 和 current_order_ 的互斥锁
 
     // ====== 回调组 ======
     /**

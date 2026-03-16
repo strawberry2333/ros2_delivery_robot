@@ -63,6 +63,9 @@ find_package(yaml-cpp REQUIRED)
 # BehaviorTree.CPP v4（Phase 2 行为树驱动配送执行）
 find_package(behaviortree_cpp REQUIRED)
 
+# ROS2 生命周期节点库（Phase 3 delivery_executor 转 LifecycleNode）
+find_package(rclcpp_lifecycle REQUIRED)
+
 # ---------------------------------------------------------------------------
 # 构建目标 1：delivery_bt_nodes 静态库（BT 叶节点）
 # ---------------------------------------------------------------------------
@@ -71,6 +74,7 @@ add_library(delivery_bt_nodes STATIC
   src/nodes/dock_at_station.cpp
   src/nodes/wait_for_confirmation.cpp
   src/nodes/report_delivery_status.cpp
+  src/nodes/check_battery.cpp
 )
 
 target_include_directories(delivery_bt_nodes PUBLIC
@@ -135,6 +139,7 @@ target_include_directories(delivery_executor PUBLIC
 ament_target_dependencies(delivery_executor
   rclcpp
   rclcpp_action
+  rclcpp_lifecycle
   nav2_msgs
   geometry_msgs
   tf2
@@ -172,10 +177,22 @@ install(DIRECTORY behavior_trees/
 # ---------------------------------------------------------------------------
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
+  find_package(ament_cmake_gtest REQUIRED)
   # 跳过版权和 cpplint 检查（项目尚处于开发阶段）
   set(ament_cmake_copyright_FOUND TRUE)
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
+
+  # CheckBattery 单元测试
+  ament_add_gtest(test_check_battery test/test_check_battery.cpp)
+  target_link_libraries(test_check_battery delivery_bt_nodes)
+  ament_target_dependencies(test_check_battery behaviortree_cpp)
+
+  # ReportDeliveryStatus 单元测试
+  ament_add_gtest(test_report_delivery_status test/test_report_delivery_status.cpp)
+  target_link_libraries(test_report_delivery_status delivery_bt_nodes)
+  ament_target_dependencies(test_report_delivery_status
+    rclcpp delivery_interfaces behaviortree_cpp)
 endif()
 
 # ament 包注册（必须在 CMakeLists.txt 末尾调用）

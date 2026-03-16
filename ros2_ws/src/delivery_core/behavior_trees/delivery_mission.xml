@@ -1,0 +1,39 @@
+<!--
+  delivery_mission.xml — 带电量检查的配送任务行为树
+  在执行配送前检查电量，电量不足时自动导航到充电桩。
+
+  黑板变量（由 executor 设置）：
+    - order_id: 订单 ID
+    - pickup_station: 取货站点 ID
+    - dropoff_station: 送货站点 ID
+    - stations: 站点映射表 (StationMap)
+    - battery_level: 当前电量百分比 (0.0~100.0)
+-->
+<root BTCPP_format="4" main_tree_to_execute="DeliveryMission">
+
+  <!-- 引用 SingleDelivery 子树 -->
+  <include path="single_delivery_robust.xml" />
+
+  <BehaviorTree ID="DeliveryMission">
+    <Sequence>
+      <!-- 电量检查：不足时导航到充电桩 -->
+      <Fallback>
+        <CheckBattery threshold="20.0" />
+        <Sequence>
+          <ReportDeliveryStatus order_id="{order_id}" state="1"
+                                station_id="charge_home" progress="0.0" />
+          <NavigateToStation station_id="charge_home" />
+          <ReportDeliveryStatus order_id="{order_id}" state="0"
+                                station_id="charge_home" progress="0.0" />
+        </Sequence>
+      </Fallback>
+
+      <!-- 执行配送子树 -->
+      <SubTree ID="SingleDelivery"
+               order_id="{order_id}"
+               pickup_station="{pickup_station}"
+               dropoff_station="{dropoff_station}" />
+    </Sequence>
+  </BehaviorTree>
+
+</root>

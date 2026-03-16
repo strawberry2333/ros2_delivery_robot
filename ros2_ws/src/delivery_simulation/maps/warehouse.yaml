@@ -1,0 +1,8 @@
+# 仓库配送场景地图元数据
+# 10m × 8m 房间，分辨率 0.05m/pixel
+image: warehouse.pgm
+resolution: 0.05
+origin: [-5.0, -4.0, 0.0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.196

@@ -1,0 +1,7 @@
+# 生命周期管理器配置
+# 管理 delivery_executor 节点的生命周期状态转换
+delivery_lifecycle_manager:
+  ros__parameters:
+    managed_nodes:
+      - "delivery_executor"
+    transition_delay_sec: 2.0

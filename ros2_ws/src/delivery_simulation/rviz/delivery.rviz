@@ -1,0 +1,71 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Map
+      Name: Map
+      Topic:
+        Value: /map
+      Enabled: true
+      Update Topic:
+        Value: /map_updates
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Enabled: true
+      Show Axes: true
+      Show Names: true
+      Frame Timeout: 15
+    - Class: rviz_default_plugins/RobotModel
+      Name: RobotModel
+      Description Topic:
+        Value: /robot_description
+      Enabled: true
+    - Class: rviz_default_plugins/LaserScan
+      Name: LaserScan
+      Topic:
+        Value: /scan
+      Enabled: true
+      Size (m): 0.05
+    - Class: rviz_default_plugins/Path
+      Name: GlobalPath
+      Topic:
+        Value: /plan
+      Enabled: true
+      Line Style: Lines
+      Color: 25; 255; 0
+    - Class: rviz_default_plugins/Path
+      Name: LocalPath
+      Topic:
+        Value: /local_plan
+      Enabled: true
+      Line Style: Lines
+      Color: 255; 255; 0
+    - Class: rviz_default_plugins/Map
+      Name: GlobalCostmap
+      Topic:
+        Value: /global_costmap/costmap
+      Enabled: false
+    - Class: rviz_default_plugins/Map
+      Name: LocalCostmap
+      Topic:
+        Value: /local_costmap/costmap
+      Enabled: false
+    - Class: rviz_default_plugins/PoseWithCovariance
+      Name: AMCL Pose
+      Topic:
+        Value: /amcl_pose
+      Enabled: true
+  Global Options:
+    Fixed Frame: map
+    Frame Rate: 30
+  Views:
+    Current:
+      Class: rviz_default_plugins/TopDownOrtho
+      Name: TopDownOrtho
+      Scale: 50
+      X: 0
+      Y: 0

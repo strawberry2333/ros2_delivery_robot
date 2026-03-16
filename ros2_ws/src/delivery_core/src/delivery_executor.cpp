@@ -1,13 +1,18 @@
 /**
  * @file delivery_executor.cpp
- * @brief 配送执行器节点实现。
+ * @brief 配送执行器生命周期节点实现。
  *
- * BT 宿主节点：接收 ExecuteDelivery Action Goal，
- * 创建行为树实例并驱动 tick 循环完成配送。
+ * Phase 3: 转为 LifecycleNode。
+ * - 构造函数：仅声明参数
+ * - on_configure：加载站点配置、注册 BT 节点、创建 publisher/service
+ * - on_activate：创建 Action Server
+ * - on_deactivate：停止 BT、销毁 Action Server
+ * - on_cleanup：清除站点数据
  */
 
 #include "delivery_core/delivery_executor.hpp"
 
+#include "delivery_core/nodes/check_battery.hpp"
 #include "delivery_core/nodes/dock_at_station.hpp"
 #include "delivery_core/nodes/navigate_to_station.hpp"
 #include "delivery_core/nodes/report_delivery_status.hpp"
@@ -26,25 +31,42 @@ namespace delivery_core
 {
 
 DeliveryExecutor::DeliveryExecutor()
-    : Node("delivery_executor")
+    : LifecycleNode("delivery_executor")
 {
-    // === 声明参数 ===
+    // 仅声明参数，实际初始化在 on_configure 中完成
     station_config_path_ = this->declare_parameter<std::string>("station_config", "");
     tree_file_path_ = this->declare_parameter<std::string>("tree_file", "");
+    battery_drain_per_delivery_ = this->declare_parameter<double>(
+        "battery_drain_per_delivery", 15.0);
 
-    // === 创建回调组 ===
+    RCLCPP_INFO(get_logger(), "DeliveryExecutor 已创建 (Unconfigured)");
+}
+
+// ======================== 生命周期回调 ========================
+
+DeliveryExecutor::CallbackReturn DeliveryExecutor::on_configure(
+    const rclcpp_lifecycle::State &)
+{
+    RCLCPP_INFO(get_logger(), "on_configure: 开始配置...");
+
+    // 创建回调组
     service_cb_group_ = this->create_callback_group(
         rclcpp::CallbackGroupType::Reentrant);
 
-    // === 创建 Nav2 Action Client ===
-    nav_client_ = rclcpp_action::create_client<NavigateToPose>(
-        this, "navigate_to_pose");
+    // 创建辅助 Node 供 BT 节点使用（LifecycleNode 不继承 rclcpp::Node）
+    bt_node_ = rclcpp::Node::make_shared(
+        "delivery_executor_bt_helper",
+        this->get_namespace());
 
-    // === 创建 Publisher ===
+    // 创建 Nav2 Action Client（通过辅助节点）
+    nav_client_ = rclcpp_action::create_client<NavigateToPose>(
+        bt_node_, "navigate_to_pose");
+
+    // 创建 Publisher
     status_pub_ = this->create_publisher<DeliveryStatus>("delivery_status", 10);
     cmd_vel_pub_ = this->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
 
-    // === 创建确认服务端 ===
+    // 创建确认服务端
     confirm_load_srv_ = this->create_service<std_srvs::srv::Trigger>(
         "confirm_load",
         [this](const std::shared_ptr<std_srvs::srv::Trigger::Request>,
@@ -67,16 +89,27 @@ DeliveryExecutor::DeliveryExecutor()
         },
         rclcpp::ServicesQoS(), service_cb_group_);
 
-    // === 加载站点配置 ===
+    // 加载站点配置
     if (!load_station_config(station_config_path_))
     {
-        RCLCPP_ERROR(get_logger(), "站点配置加载失败，executor 将无法执行配送");
+        RCLCPP_ERROR(get_logger(), "站点配置加载失败");
+        return CallbackReturn::FAILURE;
     }
 
-    // === 注册 BT 节点 ===
+    // 注册 BT 节点
     register_bt_nodes();
 
-    // === 创建 ExecuteDelivery Action Server ===
+    RCLCPP_INFO(get_logger(),
+        "on_configure: 完成，已加载 %zu 个站点", stations_.size());
+    return CallbackReturn::SUCCESS;
+}
+
+DeliveryExecutor::CallbackReturn DeliveryExecutor::on_activate(
+    const rclcpp_lifecycle::State &)
+{
+    RCLCPP_INFO(get_logger(), "on_activate: 创建 Action Server...");
+
+    // 创建 ExecuteDelivery Action Server
     action_server_ = rclcpp_action::create_server<ExecuteDelivery>(
         this,
         "execute_delivery",
@@ -86,8 +119,46 @@ DeliveryExecutor::DeliveryExecutor()
         rcl_action_server_get_default_options(),
         service_cb_group_);
 
-    RCLCPP_INFO(get_logger(),
-        "DeliveryExecutor 已初始化，已加载 %zu 个站点", stations_.size());
+    RCLCPP_INFO(get_logger(), "on_activate: Action Server 就绪");
+    return CallbackReturn::SUCCESS;
+}
+
+DeliveryExecutor::CallbackReturn DeliveryExecutor::on_deactivate(
+    const rclcpp_lifecycle::State &)
+{
+    RCLCPP_INFO(get_logger(), "on_deactivate: 停止服务...");
+
+    // 销毁 Action Server
+    action_server_.reset();
+
+    RCLCPP_INFO(get_logger(), "on_deactivate: 完成");
+    return CallbackReturn::SUCCESS;
+}
+
+DeliveryExecutor::CallbackReturn DeliveryExecutor::on_cleanup(
+    const rclcpp_lifecycle::State &)
+{
+    RCLCPP_INFO(get_logger(), "on_cleanup: 清理资源...");
+
+    stations_.clear();
+    bt_node_.reset();
+    nav_client_.reset();
+    status_pub_.reset();
+    cmd_vel_pub_.reset();
+    confirm_load_srv_.reset();
+    confirm_unload_srv_.reset();
+    battery_level_ = 100.0;
+
+    RCLCPP_INFO(get_logger(), "on_cleanup: 完成");
+    return CallbackReturn::SUCCESS;
+}
+
+DeliveryExecutor::CallbackReturn DeliveryExecutor::on_shutdown(
+    const rclcpp_lifecycle::State &)
+{
+    RCLCPP_INFO(get_logger(), "on_shutdown: 关闭节点");
+    action_server_.reset();
+    return CallbackReturn::SUCCESS;
 }
 
 // ======================== 配置加载 ========================
@@ -155,10 +226,8 @@ bool DeliveryExecutor::load_station_config(const std::string & path)
 
 void DeliveryExecutor::register_bt_nodes()
 {
-    // 使用不拥有所有权的 shared_ptr（空删除器），因为 BT 节点的生命周期
-    // 完全包含在 DeliveryExecutor 之内，不会出现悬空指针。
-    // 不能使用 shared_from_this()，因为本方法在构造函数中被调用。
-    rclcpp::Node::SharedPtr node_ptr(this, [](rclcpp::Node*){});
+    // 使用辅助节点供 BT 叶节点使用
+    auto node_ptr = bt_node_;
 
     // NavigateToStation：注入 Node 和 Nav2 Action Client
     factory_.registerBuilder<NavigateToStation>(
@@ -191,6 +260,9 @@ void DeliveryExecutor::register_bt_nodes()
             return std::make_unique<ReportDeliveryStatus>(
                 name, config, node_ptr, status_pub_);
         });
+
+    // CheckBattery：条件节点，从黑板读取电量
+    factory_.registerNodeType<CheckBattery>("CheckBattery");
 }
 
 // ======================== Action Server 回调 ========================
@@ -254,6 +326,10 @@ void DeliveryExecutor::execute_bt(
 
     RCLCPP_INFO(get_logger(), "开始执行配送 [%s]", order.order_id.c_str());
 
+    // 重置确认标志，确保每次新订单从干净状态开始
+    load_confirmed_.store(false, std::memory_order_release);
+    unload_confirmed_.store(false, std::memory_order_release);
+
     // 从 XML 文件创建行为树实例
     BT::Tree tree;
     try
@@ -277,6 +353,7 @@ void DeliveryExecutor::execute_bt(
     tree.rootBlackboard()->set("pickup_station", order.pickup_station);
     tree.rootBlackboard()->set("dropoff_station", order.dropoff_station);
     tree.rootBlackboard()->set("stations", stations_);
+    tree.rootBlackboard()->set("battery_level", battery_level_);
 
     // 发布初始状态
     {
@@ -319,10 +396,7 @@ void DeliveryExecutor::execute_bt(
 
         // 发布 feedback
         auto feedback = std::make_shared<ExecuteDelivery::Feedback>();
-        // 从行为树的运行状态推断 feedback 内容较复杂，
-        // 关键状态已由 ReportDeliveryStatus 节点通过 status_pub_ 发布
-        // 这里提供基本的 feedback 供 Action Client 使用
-        feedback->state = DeliveryStatus::STATE_GOING_TO_PICKUP;  // 简化：由 BT 节点负责精确状态
+        feedback->state = DeliveryStatus::STATE_GOING_TO_PICKUP;
         feedback->progress = 0.5f;
         goal_handle->publish_feedback(feedback);
 
@@ -338,8 +412,13 @@ void DeliveryExecutor::execute_bt(
     if (bt_status == BT::NodeStatus::SUCCESS)
     {
         result->success = true;
-        RCLCPP_INFO(get_logger(), "配送完成 [%s]，耗时 %.1f 秒",
-                    order.order_id.c_str(), result->elapsed_time_sec);
+
+        // 配送完成后扣减电量
+        battery_level_ -= battery_drain_per_delivery_;
+        if (battery_level_ < 0.0) battery_level_ = 0.0;
+        RCLCPP_INFO(get_logger(), "配送完成 [%s]，耗时 %.1f 秒，剩余电量 %.1f%%",
+                    order.order_id.c_str(), result->elapsed_time_sec,
+                    battery_level_);
         goal_handle->succeed(result);
     }
     else

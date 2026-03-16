@@ -208,6 +208,15 @@ void DeliveryManager::run()
         {
             // 记录开始时间，用于后续统计配送耗时
             current_order.start_time = this->now();
+            current_order.state = DeliveryState::kGoingToPickup;
+
+            // 设置当前执行中的订单追踪信息
+            {
+                std::lock_guard<std::mutex> lock(current_order_mutex_);
+                current_order_id_ = current_order.order.order_id;
+                current_order_ = current_order;
+            }
+
             RCLCPP_INFO(get_logger(), "开始执行订单 [%s]: %s → %s",
                         current_order.order.order_id.c_str(),
                         current_order.order.pickup_station.c_str(),
@@ -215,6 +224,13 @@ void DeliveryManager::run()
 
             // 执行配送全流程（阻塞，可能耗时数分钟）
             bool success = execute_delivery(current_order);
+
+            // 清除当前订单追踪
+            {
+                std::lock_guard<std::mutex> lock(current_order_mutex_);
+                current_order_id_.clear();
+                current_order_.reset();
+            }
 
             // 将完成的订单存入历史记录（无论成功还是失败）
             {
@@ -346,6 +362,16 @@ bool DeliveryManager::execute_delivery(OrderRecord & record)
         return true;
     }
 
+    // 被取消
+    if (wrapped_result.code == rclcpp_action::ResultCode::CANCELED)
+    {
+        record.state = DeliveryState::kCanceled;
+        record.error_msg = "配送被用户取消";
+        publish_status(order.order_id, DeliveryState::kCanceled, "", 0.0f,
+                       record.error_msg);
+        return false;
+    }
+
     // 失败
     record.state = DeliveryState::kFailed;
     record.error_msg = wrapped_result.result ?
@@ -444,6 +470,16 @@ void DeliveryManager::handle_submit_order(
                 return;
             }
         }
+        // 检查 order_id 是否与当前执行中的订单重复
+        {
+            std::lock_guard<std::mutex> co_lock(current_order_mutex_);
+            if (!current_order_id_.empty() && current_order_id_ == order.order_id)
+            {
+                response->accepted = false;
+                response->reason = "订单 ID 正在执行中: " + order.order_id;
+                return;
+            }
+        }
         // 检查 order_id 在历史记录中是否重复
         // 防止同一订单被重复提交
         for (const auto & existing : completed_orders_)
@@ -504,9 +540,10 @@ void DeliveryManager::handle_cancel_order(
     }
     else
     {
-        // 尝试取消正在执行中的订单
+        // 尝试取消正在执行中的订单——需要验证 order_id 匹配
+        std::lock_guard<std::mutex> co_lock(current_order_mutex_);
         std::lock_guard<std::mutex> gh_lock(goal_handle_mutex_);
-        if (current_goal_handle_)
+        if (current_goal_handle_ && current_order_id_ == request->order_id)
         {
             RCLCPP_INFO(get_logger(), "取消执行中的订单 [%s]",
                         request->order_id.c_str());
@@ -517,7 +554,7 @@ void DeliveryManager::handle_cancel_order(
         else
         {
             response->success = false;
-            response->reason = "订单不在队列中（可能已完成或从未提交）";
+            response->reason = "订单不在队列中且不是当前执行中的订单（可能已完成或从未提交）";
         }
     }
 }
@@ -544,6 +581,20 @@ void DeliveryManager::handle_get_report(
         status.state = state_to_msg(record.state);
         status.error_msg = record.error_msg;
         response->reports.push_back(status);
+    }
+
+    // 当前正在执行的订单
+    {
+        std::lock_guard<std::mutex> co_lock(current_order_mutex_);
+        if (current_order_.has_value())
+        {
+            DeliveryStatus status;
+            status.order_id = current_order_->order.order_id;
+            status.state = state_to_msg(current_order_->state);
+            status.current_station = current_order_->order.pickup_station;
+            status.error_msg = current_order_->error_msg;
+            response->reports.push_back(status);
+        }
     }
 
     // 已完成/失败的订单
@@ -816,6 +867,7 @@ uint8_t DeliveryManager::state_to_msg(DeliveryState state) const
     case DeliveryState::kWaitingUnload:  return DeliveryStatus::STATE_WAITING_UNLOAD;
     case DeliveryState::kComplete:       return DeliveryStatus::STATE_COMPLETE;
     case DeliveryState::kFailed:         return DeliveryStatus::STATE_FAILED;
+    case DeliveryState::kCanceled:       return DeliveryStatus::STATE_CANCELED;
     default:                             return DeliveryStatus::STATE_IDLE;
     }
 }
@@ -836,6 +888,7 @@ std::string DeliveryManager::state_to_string(DeliveryState state) const
     case DeliveryState::kWaitingUnload:  return "等待卸货(WaitingUnload)";
     case DeliveryState::kComplete:       return "配送完成(Complete)";
     case DeliveryState::kFailed:         return "配送失败(Failed)";
+    case DeliveryState::kCanceled:       return "配送取消(Canceled)";
     default:                             return "未知(Unknown)";
     }
 }
