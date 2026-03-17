@@ -1,6 +1,6 @@
 <!--
   single_delivery_robust.xml — 带重试的单次配送行为树
-  在 single_delivery.xml 基础上，用 RetryNode 包裹导航节点，
+  在 single_delivery.xml 基础上，用 RetryUntilSuccessful 包裹导航节点，
   导航失败时自动重试一次（共 2 次尝试），重试仍失败则整棵树返回 FAILURE。
 
   黑板变量（由 executor 设置）：
@@ -15,18 +15,18 @@
   <BehaviorTree ID="SingleDelivery">
     <Sequence>
       <!-- 取货阶段 -->
-      <RetryNode num_attempts="2">
+      <RetryUntilSuccessful num_attempts="2">
         <NavigateToStation station_id="{pickup_station}" />
-      </RetryNode>
+      </RetryUntilSuccessful>
       <DockAtStation        station_id="{pickup_station}" />
       <ReportDeliveryStatus order_id="{order_id}" state="2"
                             station_id="{pickup_station}" progress="0.3" />
       <WaitForConfirmation  confirm_type="load" timeout_sec="60.0" />
 
       <!-- 送货阶段 -->
-      <RetryNode num_attempts="2">
+      <RetryUntilSuccessful num_attempts="2">
         <NavigateToStation station_id="{dropoff_station}" />
-      </RetryNode>
+      </RetryUntilSuccessful>
       <DockAtStation        station_id="{dropoff_station}" />
       <ReportDeliveryStatus order_id="{order_id}" state="4"
                             station_id="{dropoff_station}" progress="0.8" />

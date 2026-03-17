@@ -65,10 +65,10 @@ delivery_manager:
 
     # 初始位姿 X 坐标（单位：米，地图坐标系下）
     # 应与 Gazebo 中机器人的生成位置一致
-    initial_x: 0.0
+    initial_x: -2.0
 
     # 初始位姿 Y 坐标（单位：米，地图坐标系下）
-    initial_y: 0.0
+    initial_y: -0.5
 
     # 初始位姿朝向角（单位：弧度，范围 [-pi, pi]）
     # 应与 Gazebo 中机器人的生成朝向一致
