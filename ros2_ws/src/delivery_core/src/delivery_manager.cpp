@@ -278,14 +278,31 @@ bool DeliveryManager::execute_delivery(OrderRecord & record)
     auto send_goal_options =
         rclcpp_action::Client<ExecuteDelivery>::SendGoalOptions();
 
-    // Feedback 回调：更新状态发布
+    // Feedback 回调：将 executor 的实时状态同步到 current_order_，
+    // 使 GetDeliveryReport 能返回准确的在途订单状态
     send_goal_options.feedback_callback =
         [this, &record](ExecuteDeliveryGoalHandle::SharedPtr,
                         const std::shared_ptr<const ExecuteDelivery::Feedback> feedback)
     {
-        // executor 通过 ReportDeliveryStatus BT 节点已经发布了详细状态，
-        // 这里仅更新内部记录的 state
-        (void)feedback;
+        // 将 msg 常量映射回内部枚举
+        DeliveryState new_state = DeliveryState::kIdle;
+        switch (feedback->state)
+        {
+        case DeliveryStatus::STATE_GOING_TO_PICKUP:  new_state = DeliveryState::kGoingToPickup; break;
+        case DeliveryStatus::STATE_WAITING_LOAD:     new_state = DeliveryState::kWaitingLoad; break;
+        case DeliveryStatus::STATE_GOING_TO_DROPOFF: new_state = DeliveryState::kGoingToDropoff; break;
+        case DeliveryStatus::STATE_WAITING_UNLOAD:   new_state = DeliveryState::kWaitingUnload; break;
+        case DeliveryStatus::STATE_COMPLETE:         new_state = DeliveryState::kComplete; break;
+        case DeliveryStatus::STATE_FAILED:           new_state = DeliveryState::kFailed; break;
+        default: return;
+        }
+
+        record.state = new_state;
+        std::lock_guard<std::mutex> lock(current_order_mutex_);
+        if (current_order_.has_value())
+        {
+            current_order_->state = new_state;
+        }
     };
 
     // 发送 Goal
