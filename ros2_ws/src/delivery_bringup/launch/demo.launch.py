@@ -71,11 +71,11 @@ def generate_launch_description():
         ],
     )
 
-    # --- 阶段 3: 配送管理节点 (延迟 30 秒等待 Nav2 就绪) ---
+    # --- 阶段 3: 配送管理节点 (延迟 15 秒等待 Nav2 就绪) ---
     # TimerAction 确保 Nav2 完全就绪后再启动配送逻辑
     # delivery_manager 启动时会等待 TF 树和 /clock 话题可用
     delivery_launch = TimerAction(
-        period=30.0,
+        period=15.0,
         actions=[
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
