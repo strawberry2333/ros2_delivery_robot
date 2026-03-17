@@ -23,10 +23,14 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration("use_sim_time", default="true")
 
     nav2_bringup_dir = get_package_share_directory("nav2_bringup")
+    bringup_dir = get_package_share_directory("delivery_bringup")
     turtlebot3_nav_dir = get_package_share_directory("turtlebot3_navigation2")
 
     # 默认使用 TurtleBot3 标准地图
     default_map = os.path.join(turtlebot3_nav_dir, "map", "map.yaml")
+
+    # 自定义 Nav2 参数（启用 enable_stamped_cmd_vel 以匹配 Gazebo bridge）
+    default_params = os.path.join(bringup_dir, "config", "nav2_params.yaml")
 
     nav2_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -35,6 +39,7 @@ def generate_launch_description():
         launch_arguments={
             "use_sim_time": use_sim_time,
             "map": LaunchConfiguration("map"),
+            "params_file": LaunchConfiguration("params_file"),
         }.items(),
     )
 
@@ -49,6 +54,11 @@ def generate_launch_description():
                 "map",
                 default_value=default_map,
                 description="Full path to map yaml file",
+            ),
+            DeclareLaunchArgument(
+                "params_file",
+                default_value=default_params,
+                description="Full path to the Nav2 parameters file",
             ),
             nav2_launch,
         ]
