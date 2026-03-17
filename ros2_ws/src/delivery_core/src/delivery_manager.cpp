@@ -436,6 +436,14 @@ void DeliveryManager::handle_submit_order(
         return;
     }
 
+    // 取货站和送货站不能相同
+    if (order.pickup_station == order.dropoff_station)
+    {
+        response->accepted = false;
+        response->reason = "取货站和送货站不能相同: " + order.pickup_station;
+        return;
+    }
+
     // 验证站点类型语义正确性：
     // type=0 是取货站，type=1 是送货站，type=2 是充电桩
     // 防止用户误将送货站指定为取货点（反之亦然）
