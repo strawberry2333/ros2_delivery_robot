@@ -20,6 +20,7 @@
 
 #include "yaml-cpp/yaml.h"
 
+#include <algorithm>
 #include <chrono>
 #include <functional>
 #include <thread>
@@ -135,6 +136,12 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_deactivate(
 {
     RCLCPP_INFO(get_logger(), "on_deactivate: 停止服务...");
 
+    // 等待 BT 执行线程完成
+    if (bt_execution_thread_.joinable())
+    {
+        bt_execution_thread_.join();
+    }
+
     // 销毁 Action Server
     action_server_.reset();
 
@@ -165,7 +172,7 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_cleanup(
     cmd_vel_pub_.reset();
     confirm_load_srv_.reset();
     confirm_unload_srv_.reset();
-    battery_level_ = 100.0;
+    battery_level_.store(100.0);
 
     // 反注册所有 BT 节点，避免二次 configure 时 "ID already registered" 错误
     factory_.unregisterBuilder("NavigateToStation");
@@ -345,10 +352,16 @@ rclcpp_action::CancelResponse DeliveryExecutor::handle_cancel(
 void DeliveryExecutor::handle_accepted(
     const std::shared_ptr<GoalHandleExecuteDelivery> goal_handle)
 {
+    // 等待前一个执行线程完成（正常情况下不会触发，因为 handle_goal 拒绝并发）
+    if (bt_execution_thread_.joinable())
+    {
+        bt_execution_thread_.join();
+    }
+
     // 在新线程中执行 BT，避免阻塞 executor 线程
-    std::thread([this, goal_handle]() {
+    bt_execution_thread_ = std::thread([this, goal_handle]() {
         execute_bt(goal_handle);
-    }).detach();
+    });
 }
 
 // ======================== BT 执行核心循环 ========================
@@ -390,7 +403,7 @@ void DeliveryExecutor::execute_bt(
     tree.rootBlackboard()->set("pickup_station", order.pickup_station);
     tree.rootBlackboard()->set("dropoff_station", order.dropoff_station);
     tree.rootBlackboard()->set("stations", stations_);
-    tree.rootBlackboard()->set("battery_level", battery_level_);
+    tree.rootBlackboard()->set("battery_level", battery_level_.load());
 
     // 发布初始状态
     {
@@ -450,12 +463,13 @@ void DeliveryExecutor::execute_bt(
     {
         result->success = true;
 
-        // 配送完成后扣减电量
-        battery_level_ -= battery_drain_per_delivery_;
-        if (battery_level_ < 0.0) battery_level_ = 0.0;
+        // 配送完成后扣减电量（原子操作，线程安全）
+        double current = battery_level_.load();
+        double updated = std::max(0.0, current - battery_drain_per_delivery_);
+        battery_level_.store(updated);
         RCLCPP_INFO(get_logger(), "配送完成 [%s]，耗时 %.1f 秒，剩余电量 %.1f%%",
                     order.order_id.c_str(), result->elapsed_time_sec,
-                    battery_level_);
+                    updated);
         goal_handle->succeed(result);
     }
     else

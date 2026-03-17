@@ -84,7 +84,8 @@ private:
     double battery_drain_per_delivery_{15.0};
 
     // ====== 电池模拟 ======
-    double battery_level_{100.0};
+    /// 当前电量百分比（BT 执行线程和 cleanup 均会访问，使用原子操作保护）
+    std::atomic<double> battery_level_{100.0};
 
     // ====== 站点数据 ======
     StationMap stations_;
@@ -98,6 +99,9 @@ private:
 
     // ====== 执行状态 ======
     std::atomic<bool> executing_{false};
+
+    /// BT 执行线程（替代 detach，确保节点关闭前线程已完成）
+    std::thread bt_execution_thread_;
 
     // ====== 辅助节点 ======
     /// BT 节点需要 rclcpp::Node::SharedPtr（LifecycleNode 不继承自 Node），
