@@ -57,6 +57,11 @@ delivery_manager:
     # 取值范围：建议 30.0 ~ 300.0，默认 60.0
     wait_confirmation_timeout_sec: 60.0
 
+    # 等待 Action Server 可用的超时时间（单位：秒）
+    # 包括 Nav2 navigate_to_pose 和 ExecuteDelivery action server
+    # 仿真环境中 Nav2 启动较慢，建议 30.0 以上
+    action_server_wait_timeout_sec: 60.0
+
     # --- 初始位姿配置 ---
     # 是否在节点启动时自动发布初始位姿到 /initialpose 话题
     # 设为 true 时，AMCL 会使用此位姿作为粒子滤波的初始分布中心
@@ -65,10 +70,11 @@ delivery_manager:
 
     # 初始位姿 X 坐标（单位：米，地图坐标系下）
     # 应与 Gazebo 中机器人的生成位置一致
-    initial_x: 0.0
+    # TurtleBot3 标准世界中机器人生成在 (-2.0, -0.5)
+    initial_x: -2.0
 
     # 初始位姿 Y 坐标（单位：米，地图坐标系下）
-    initial_y: 0.0
+    initial_y: -0.5
 
     # 初始位姿朝向角（单位：弧度，范围 [-pi, pi]）
     # 应与 Gazebo 中机器人的生成朝向一致
