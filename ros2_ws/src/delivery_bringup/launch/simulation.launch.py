@@ -1,13 +1,13 @@
 """Gazebo 仿真环境启动脚本
 
-启动 TurtleBot3 机器人 + 仿真环境。
-支持自定义 Gazebo 世界文件（默认使用 TurtleBot3 标准世界）。
+启动 TurtleBot3 机器人 + 仿真环境（使用 TurtleBot3 标准世界）。
 
 使用：
   export TURTLEBOT3_MODEL=waffle_pi
   ros2 launch delivery_bringup simulation.launch.py
-  # 使用自定义仓库场景：
-  ros2 launch delivery_bringup simulation.launch.py world:=warehouse
+
+注意：自定义世界（如 warehouse.sdf）需要额外的 gz_sim + robot spawn 配置，
+当前版本尚未实现，后续版本会支持 world 参数切换。
 """
 
 import os
@@ -26,9 +26,7 @@ from ament_index_python.packages import get_package_share_directory
 def generate_launch_description():
     """生成 Gazebo 仿真环境的启动描述
 
-    支持两种模式：
-    1. 默认模式：使用 turtlebot3_gazebo 标准世界
-    2. 自定义模式：通过 world 参数指定自定义世界名称
+    当前使用 turtlebot3_gazebo 标准世界。
     """
 
     use_sim_time = LaunchConfiguration("use_sim_time", default="true")
