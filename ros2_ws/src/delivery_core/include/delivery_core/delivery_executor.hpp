@@ -16,8 +16,10 @@
  */
 
 #include <atomic>
+#include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 
 #include "behaviortree_cpp/bt_factory.h"
@@ -101,6 +103,10 @@ private:
     /// BT 节点需要 rclcpp::Node::SharedPtr（LifecycleNode 不继承自 Node），
     /// 因此创建一个轻量辅助节点供 BT 节点使用
     rclcpp::Node::SharedPtr bt_node_;
+
+    /// 辅助节点的 executor 和 spin 线程，确保 Nav2 action client 回调能被处理
+    rclcpp::executors::SingleThreadedExecutor::SharedPtr bt_node_executor_;
+    std::thread bt_node_spin_thread_;
 
     // ====== ROS 通信接口 ======
     rclcpp_action::Server<ExecuteDelivery>::SharedPtr action_server_;

@@ -62,6 +62,13 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_configure(
     nav_client_ = rclcpp_action::create_client<NavigateToPose>(
         bt_node_, "navigate_to_pose");
 
+    // 启动辅助节点的 executor spin 线程，确保 Nav2 action client 回调能被处理
+    bt_node_executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+    bt_node_executor_->add_node(bt_node_);
+    bt_node_spin_thread_ = std::thread([this]() {
+        bt_node_executor_->spin();
+    });
+
     // 创建 Publisher
     status_pub_ = this->create_publisher<DeliveryStatus>("delivery_status", 10);
     cmd_vel_pub_ = this->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
@@ -140,6 +147,17 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_cleanup(
 {
     RCLCPP_INFO(get_logger(), "on_cleanup: 清理资源...");
 
+    // 停止辅助节点的 spin 线程
+    if (bt_node_executor_)
+    {
+        bt_node_executor_->cancel();
+    }
+    if (bt_node_spin_thread_.joinable())
+    {
+        bt_node_spin_thread_.join();
+    }
+    bt_node_executor_.reset();
+
     stations_.clear();
     bt_node_.reset();
     nav_client_.reset();
@@ -148,6 +166,13 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_cleanup(
     confirm_load_srv_.reset();
     confirm_unload_srv_.reset();
     battery_level_ = 100.0;
+
+    // 反注册所有 BT 节点，避免二次 configure 时 "ID already registered" 错误
+    factory_.unregisterBuilder("NavigateToStation");
+    factory_.unregisterBuilder("DockAtStation");
+    factory_.unregisterBuilder("WaitForConfirmation");
+    factory_.unregisterBuilder("ReportDeliveryStatus");
+    factory_.unregisterBuilder("CheckBattery");
 
     RCLCPP_INFO(get_logger(), "on_cleanup: 完成");
     return CallbackReturn::SUCCESS;
@@ -158,6 +183,18 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_shutdown(
 {
     RCLCPP_INFO(get_logger(), "on_shutdown: 关闭节点");
     action_server_.reset();
+
+    // 停止辅助节点的 spin 线程
+    if (bt_node_executor_)
+    {
+        bt_node_executor_->cancel();
+    }
+    if (bt_node_spin_thread_.joinable())
+    {
+        bt_node_spin_thread_.join();
+    }
+    bt_node_executor_.reset();
+
     return CallbackReturn::SUCCESS;
 }
 
