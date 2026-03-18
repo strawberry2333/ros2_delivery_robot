@@ -59,6 +59,7 @@
 
   <!-- ROS2 生命周期节点库（Phase 3 delivery_executor LifecycleNode） -->
   <depend>rclcpp_lifecycle</depend>
+  <depend>lifecycle_msgs</depend>
 
   <!-- 测试依赖 -->
   <test_depend>ament_cmake_gtest</test_depend>

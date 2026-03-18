@@ -65,6 +65,7 @@ find_package(behaviortree_cpp REQUIRED)
 
 # ROS2 生命周期节点库（Phase 3 delivery_executor 转 LifecycleNode）
 find_package(rclcpp_lifecycle REQUIRED)
+find_package(lifecycle_msgs REQUIRED)
 
 # ---------------------------------------------------------------------------
 # 构建目标 1：delivery_bt_nodes 静态库（BT 叶节点）
@@ -139,6 +140,7 @@ ament_target_dependencies(delivery_executor
   rclcpp
   rclcpp_action
   rclcpp_lifecycle
+  lifecycle_msgs
   nav2_msgs
   geometry_msgs
   tf2

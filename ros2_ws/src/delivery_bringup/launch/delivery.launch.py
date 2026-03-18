@@ -1,9 +1,6 @@
-"""配送系统节点启动脚本
+"""配送系统节点启动脚本。
 
-启动 delivery_executor (LifecycleNode) + lifecycle_manager + delivery_manager。
-
-使用：
-  ros2 launch delivery_bringup delivery.launch.py
+默认使用仓库场景的站点配置和初始位姿。
 """
 
 from launch import LaunchDescription
@@ -55,8 +52,8 @@ def generate_launch_description():
         default_value="true",
         description="Publish initial pose to AMCL",
     )
-    initial_x_arg = DeclareLaunchArgument("initial_x", default_value="0.0")
-    initial_y_arg = DeclareLaunchArgument("initial_y", default_value="0.0")
+    initial_x_arg = DeclareLaunchArgument("initial_x", default_value="-2.0")
+    initial_y_arg = DeclareLaunchArgument("initial_y", default_value="-0.5")
     initial_yaw_arg = DeclareLaunchArgument("initial_yaw", default_value="0.0")
     tree_file_arg = DeclareLaunchArgument(
         "tree_file",

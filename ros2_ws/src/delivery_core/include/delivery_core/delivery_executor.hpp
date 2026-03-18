@@ -16,6 +16,7 @@
  */
 
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -49,6 +50,7 @@ public:
   using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
   DeliveryExecutor();
+  ~DeliveryExecutor() override;
 
     // ====== 生命周期回调 ======
   CallbackReturn on_configure(const rclcpp_lifecycle::State & state) override;
@@ -63,6 +65,14 @@ private:
 
     // ====== BT 工厂初始化 ======
   void register_bt_nodes();
+
+    // ====== 线程/停机管理 ======
+  void request_bt_stop();
+  void join_bt_thread();
+  void stop_bt_helper_node();
+  bool wait_for_nav2_active(std::chrono::seconds timeout);
+  void clear_active_goal(
+    const std::shared_ptr<GoalHandleExecuteDelivery> & goal_handle);
 
     // ====== Action Server 回调 ======
   rclcpp_action::GoalResponse handle_goal(
@@ -99,6 +109,9 @@ private:
 
     // ====== 执行状态 ======
   std::atomic<bool> executing_{false};
+  std::atomic<bool> stop_requested_{false};
+  std::mutex execution_mutex_;
+  std::shared_ptr<GoalHandleExecuteDelivery> active_goal_handle_;
 
     /// BT 执行线程（替代 detach，确保节点关闭前线程已完成）
   std::thread bt_execution_thread_;

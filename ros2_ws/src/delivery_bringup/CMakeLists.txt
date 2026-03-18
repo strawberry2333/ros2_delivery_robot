@@ -21,7 +21,7 @@ find_package(ament_cmake REQUIRED)
 # 其他包可通过 get_package_share_directory("delivery_bringup") 获取该路径
 # --symlink-install 模式下会创建符号链接，修改源文件后无需重新构建
 install(DIRECTORY
-  launch config
+  launch config rviz
   DESTINATION share/${PROJECT_NAME}
 )
 

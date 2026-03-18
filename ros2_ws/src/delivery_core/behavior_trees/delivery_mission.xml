@@ -1,6 +1,7 @@
 <!--
-  delivery_mission.xml — 带电量检查的配送任务行为树
-  在执行配送前检查电量，低电量回充电点待机（demo 级别，不恢复电量）。
+  delivery_mission.xml — 带电量前置检查的配送任务行为树
+  CheckBattery 作为 Sequence 前置条件：电量不足直接返回 FAILURE，
+  由 executor 的失败处理中止配送（demo 级别，不恢复电量）。
 
   黑板变量（由 executor 设置）：
     - order_id: 订单 ID
@@ -16,19 +17,8 @@
 
   <BehaviorTree ID="DeliveryMission">
     <Sequence>
-      <!-- 电量检查：不足时导航到充电桩 -->
-      <Fallback>
-        <CheckBattery threshold="20.0" />
-        <Sequence>
-          <ReportDeliveryStatus order_id="{order_id}" state="1"
-                                station_id="charge_home" progress="0.0"
-                                bt_state="{bt_state}" bt_station="{bt_station}" bt_progress="{bt_progress}" />
-          <NavigateToStation station_id="charge_home" />
-          <ReportDeliveryStatus order_id="{order_id}" state="1"
-                                station_id="charge_home" progress="0.1"
-                                bt_state="{bt_state}" bt_station="{bt_station}" bt_progress="{bt_progress}" />
-        </Sequence>
-      </Fallback>
+      <!-- 电量前置检查：不足时 FAILURE，executor 中止配送 -->
+      <CheckBattery threshold="20.0" />
 
       <!-- 执行配送子树 -->
       <SubTree ID="SingleDelivery"

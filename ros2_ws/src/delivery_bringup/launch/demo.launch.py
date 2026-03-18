@@ -1,17 +1,6 @@
-"""一键启动完整配送系统
+"""一键启动完整配送系统。
 
-启动顺序：Gazebo 仿真 → Nav2 导航栈 → 配送管理节点
-
-使用：
-  export TURTLEBOT3_MODEL=waffle_pi
-  ros2 launch delivery_bringup demo.launch.py
-
-验证：
-  ros2 topic echo /delivery_status
-  ros2 service call /submit_order delivery_interfaces/srv/SubmitOrder \
-    "{order: {order_id: 'order_001', pickup_station: 'station_A', dropoff_station: 'station_C', priority: 0}}"
-  ros2 service call /confirm_load std_srvs/srv/Trigger
-  ros2 service call /confirm_unload std_srvs/srv/Trigger
+默认启动仓库仿真、仓库地图和配送节点。
 """
 
 import os
@@ -46,19 +35,35 @@ def generate_launch_description():
 
     # 是否使用仿真时间。仿真环境下必须为 true，以确保所有节点使用 Gazebo 发布的 /clock 时间
     use_sim_time = LaunchConfiguration("use_sim_time", default="true")
+    world = LaunchConfiguration("world")
+    map_yaml = LaunchConfiguration("map")
+    x_pose = LaunchConfiguration("x_pose")
+    y_pose = LaunchConfiguration("y_pose")
+    yaw = LaunchConfiguration("yaw")
+    rviz = LaunchConfiguration("rviz")
+    rviz_delay = LaunchConfiguration("rviz_delay")
+    rviz_config = LaunchConfiguration("rviz_config")
+    rviz_software_rendering = LaunchConfiguration("rviz_software_rendering")
+    default_world = os.path.join(
+        get_package_share_directory("delivery_simulation"), "worlds", "warehouse.sdf"
+    )
+    default_map = os.path.join(
+        get_package_share_directory("delivery_simulation"), "maps", "warehouse.yaml"
+    )
 
-    # --- 阶段 1: Gazebo 仿真环境 ---
-    # 立即启动，加载 TurtleBot3 World 场景和机器人模型
     simulation_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(bringup_dir, "launch", "simulation.launch.py")
         ),
-        launch_arguments={"use_sim_time": use_sim_time}.items(),
+        launch_arguments={
+            "use_sim_time": use_sim_time,
+            "world": world,
+            "x_pose": x_pose,
+            "y_pose": y_pose,
+            "yaw": yaw,
+        }.items(),
     )
 
-    # --- 阶段 2: Nav2 导航栈 (延迟 5 秒等待 Gazebo 就绪) ---
-    # TimerAction 确保 Gazebo 完成初始化后再启动导航栈
-    # 导航栈包括：AMCL 定位、全局/局部代价地图、路径规划器、控制器
     navigation_launch = TimerAction(
         period=5.0,
         actions=[
@@ -66,14 +71,18 @@ def generate_launch_description():
                 PythonLaunchDescriptionSource(
                     os.path.join(bringup_dir, "launch", "navigation.launch.py")
                 ),
-                launch_arguments={"use_sim_time": use_sim_time}.items(),
+                launch_arguments={
+                    "use_sim_time": use_sim_time,
+                    "map": map_yaml,
+                    "rviz": rviz,
+                    "rviz_delay": rviz_delay,
+                    "rviz_config": rviz_config,
+                    "rviz_software_rendering": rviz_software_rendering,
+                }.items(),
             )
         ],
     )
 
-    # --- 阶段 3: 配送管理节点 (延迟 15 秒等待 Nav2 就绪) ---
-    # TimerAction 确保 Nav2 完全就绪后再启动配送逻辑
-    # delivery_manager 启动时会等待 TF 树和 /clock 话题可用
     delivery_launch = TimerAction(
         period=15.0,
         actions=[
@@ -81,7 +90,12 @@ def generate_launch_description():
                 PythonLaunchDescriptionSource(
                     os.path.join(bringup_dir, "launch", "delivery.launch.py")
                 ),
-                launch_arguments={"use_sim_time": use_sim_time}.items(),
+                launch_arguments={
+                    "use_sim_time": use_sim_time,
+                    "initial_x": x_pose,
+                    "initial_y": y_pose,
+                    "initial_yaw": yaw,
+                }.items(),
             )
         ],
     )
@@ -95,7 +109,53 @@ def generate_launch_description():
                 default_value="true",
                 description="Use simulation time",
             ),
-            # 按阶段顺序添加启动动作
+            DeclareLaunchArgument(
+                "world",
+                default_value=default_world,
+                description="Full path to the Gazebo world file",
+            ),
+            DeclareLaunchArgument(
+                "map",
+                default_value=default_map,
+                description="Full path to the Nav2 map yaml",
+            ),
+            DeclareLaunchArgument(
+                "x_pose",
+                default_value="-2.0",
+                description="Initial robot X pose",
+            ),
+            DeclareLaunchArgument(
+                "y_pose",
+                default_value="-0.5",
+                description="Initial robot Y pose",
+            ),
+            DeclareLaunchArgument(
+                "yaw",
+                default_value="0.0",
+                description="Initial robot yaw",
+            ),
+            DeclareLaunchArgument(
+                "rviz",
+                default_value="true",
+                description="Whether to launch RViz",
+            ),
+            DeclareLaunchArgument(
+                "rviz_delay",
+                default_value="15.0",
+                description="Delay RViz startup until navigation is ready",
+            ),
+            DeclareLaunchArgument(
+                "rviz_config",
+                default_value=os.path.join(
+                    bringup_dir, "rviz", "warehouse_navigation.rviz"
+                ),
+                description="Full path to the RViz config file",
+            ),
+            DeclareLaunchArgument(
+                "rviz_software_rendering",
+                default_value="1",
+                description="Set LIBGL_ALWAYS_SOFTWARE for RViz (1=true, 0=false)",
+            ),
             simulation_launch,
             navigation_launch,
             delivery_launch,
