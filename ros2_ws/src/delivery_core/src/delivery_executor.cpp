@@ -89,8 +89,8 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_configure(
   bt_node_executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
   bt_node_executor_->add_node(bt_node_);
   bt_node_spin_thread_ = std::thread([this]() {
-      bt_node_executor_->spin();
-    });
+        bt_node_executor_->spin();
+      });
 
   // 创建 Publisher
   status_pub_ = this->create_publisher<DeliveryStatus>("delivery_status", 10);
@@ -453,8 +453,8 @@ void DeliveryExecutor::handle_accepted(
 
   // 在新线程中执行 BT，避免阻塞 executor 线程
   bt_execution_thread_ = std::thread([this, goal_handle]() {
-      execute_bt(goal_handle);
-    });
+        execute_bt(goal_handle);
+      });
 }
 
 // ======================== BT 执行核心循环 ========================
