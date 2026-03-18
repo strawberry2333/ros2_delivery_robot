@@ -2,7 +2,7 @@
 # 配送站点配置文件
 # =============================================================================
 # 定义所有配送站点的位置和类型，被 delivery_manager/executor 节点在启动时加载。
-# 坐标基于仓库地图 (map frame)。
+# 坐标基于地图坐标系 (map frame)。
 #
 # 字段说明：
 #   station_id   - 站点唯一标识符
@@ -12,35 +12,35 @@
 # =============================================================================
 
 stations:
-  # 取货站 A：仓库右上方
+  # 取货站 A：地图右上区域
   - station_id: "station_A"
     x: 3.0
     y: 2.0
     yaw: 0.0
     station_type: 0   # pickup
 
-  # 取货站 B：仓库右下方
+  # 取货站 B：地图右下区域
   - station_id: "station_B"
     x: 3.0
     y: -2.0
     yaw: 1.57
     station_type: 0   # pickup
 
-  # 送货站 C：仓库左下方
+  # 送货站 C：地图左下区域
   - station_id: "station_C"
     x: -3.0
     y: -2.0
     yaw: 3.14
     station_type: 1   # dropoff
 
-  # 送货站 D：仓库左上方
+  # 送货站 D：地图左上区域
   - station_id: "station_D"
     x: -3.0
     y: 2.0
     yaw: -1.57
     station_type: 1   # dropoff
 
-  # 充电站/待机点：仓库中心
+  # 充电站/待机点：地图中心
   - station_id: "charge_home"
     x: 0.0
     y: 0.0

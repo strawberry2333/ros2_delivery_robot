@@ -45,7 +45,7 @@ ros2_ws/src/
 ├── delivery_interfaces/    消息/服务/动作定义
 ├── delivery_core/          C++ 核心节点（订单管理 + 导航编排 + BT 节点）
 ├── delivery_lifecycle/     生命周期管理器
-├── delivery_simulation/    Gazebo 仿真资源（world、地图、RViz 配置）
+├── delivery_simulation/    备用 warehouse 场景资源（当前仿真使用 TurtleBot3 标准环境）
 └── delivery_bringup/       Launch 文件 + 配置文件
 ```
 
@@ -231,13 +231,15 @@ stations:
 - **BT + 状态机混合**：BT 编排单次配送决策，状态机管理订单队列
 - **LifecycleNode**：executor 使用生命周期管理，确保有序启动
 - **RetryNode 重试**：导航失败自动重试，无需修改业务逻辑
-- **模拟电池**：每次配送扣减电量，低电量时自动充电
+- **模拟电池**：每次配送扣减电量，低电量时导航至充电点待机（demo 级别，不恢复电量）
 
 ## 开发进度
 
 - [x] Phase 1：骨架 + 单点导航
 - [x] Phase 2：行为树 + 停靠确认
 - [x] Phase 3：多订单 + 生命周期 + 工程化
+
+> 核心功能骨架已实现。电量充电流程为 demo 级别，仿真使用 TurtleBot3 标准环境。
 
 详见 [plan/](plan/) 目录。
 
