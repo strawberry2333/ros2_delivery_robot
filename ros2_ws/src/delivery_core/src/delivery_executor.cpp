@@ -171,6 +171,7 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_deactivate(
   RCLCPP_INFO(get_logger(), "on_deactivate: 停止服务...");
   request_bt_stop();
   join_bt_thread();
+  goal_inflight_.store(false, std::memory_order_release);
   action_server_.reset();
 
   RCLCPP_INFO(get_logger(), "on_deactivate: 完成");
@@ -183,6 +184,7 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_cleanup(
   RCLCPP_INFO(get_logger(), "on_cleanup: 清理资源...");
   request_bt_stop();
   join_bt_thread();
+  goal_inflight_.store(false, std::memory_order_release);
   action_server_.reset();
   stop_bt_helper_node();
 
@@ -212,6 +214,7 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_shutdown(
   RCLCPP_INFO(get_logger(), "on_shutdown: 关闭节点");
   request_bt_stop();
   join_bt_thread();
+  goal_inflight_.store(false, std::memory_order_release);
   action_server_.reset();
   stop_bt_helper_node();
 
@@ -413,18 +416,21 @@ rclcpp_action::GoalResponse DeliveryExecutor::handle_goal(
                 order.pickup_station.c_str(),
                 order.dropoff_station.c_str());
 
-    // 单任务模式：同时只接受一个配送任务
-  if (executing_.load()) {
-    RCLCPP_WARN(get_logger(), "拒绝配送请求 [%s]：当前有任务在执行中",
-                    order.order_id.c_str());
-    return rclcpp_action::GoalResponse::REJECT;
-  }
-
     // 验证站点存在
   if (stations_.find(order.pickup_station) == stations_.end() ||
     stations_.find(order.dropoff_station) == stations_.end())
   {
     RCLCPP_WARN(get_logger(), "拒绝配送请求 [%s]：站点不存在",
+                    order.order_id.c_str());
+    return rclcpp_action::GoalResponse::REJECT;
+  }
+
+    // 单任务模式：在 handle_goal 就预留执行槽位，避免和 handle_accepted 之间出现竞态窗口
+  bool expected = false;
+  if (!goal_inflight_.compare_exchange_strong(
+      expected, true, std::memory_order_acq_rel, std::memory_order_acquire))
+  {
+    RCLCPP_WARN(get_logger(), "拒绝配送请求 [%s]：当前已有任务在执行或等待启动",
                     order.order_id.c_str());
     return rclcpp_action::GoalResponse::REJECT;
   }
@@ -468,6 +474,7 @@ void DeliveryExecutor::execute_bt(
   const auto start_time = std::chrono::steady_clock::now();
   const auto finish_execution = [this, &goal_handle]() {
       executing_.store(false, std::memory_order_release);
+      goal_inflight_.store(false, std::memory_order_release);
       clear_active_goal(goal_handle);
     };
 

@@ -60,6 +60,8 @@ public:
   CallbackReturn on_shutdown(const rclcpp_lifecycle::State & state) override;
 
 private:
+  friend class DeliveryExecutorTestAccess;
+
     // ====== 配置加载 ======
   bool load_station_config(const std::string & path);
 
@@ -108,6 +110,8 @@ private:
   std::atomic<bool> unload_confirmed_{false};
 
     // ====== 执行状态 ======
+    /// 标记当前是否已有已接受但未结束的 goal，避免 handle_goal/handle_accepted 之间的竞态窗口
+  std::atomic<bool> goal_inflight_{false};
   std::atomic<bool> executing_{false};
   std::atomic<bool> stop_requested_{false};
   std::mutex execution_mutex_;

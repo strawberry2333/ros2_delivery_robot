@@ -215,6 +215,18 @@ if(BUILD_TESTING)
     rclcpp rclcpp_action nav2_msgs geometry_msgs
     delivery_interfaces behaviortree_cpp)
 
+  # DeliveryExecutor 并发接单保护测试
+  ament_add_gtest(test_delivery_executor_goal_gate
+    test/test_delivery_executor_goal_gate.cpp
+    src/delivery_executor.cpp)
+  target_include_directories(test_delivery_executor_goal_gate PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+  target_link_libraries(test_delivery_executor_goal_gate delivery_bt_nodes yaml-cpp)
+  ament_target_dependencies(test_delivery_executor_goal_gate
+    rclcpp rclcpp_action rclcpp_lifecycle lifecycle_msgs
+    nav2_msgs geometry_msgs tf2 tf2_geometry_msgs std_srvs
+    delivery_interfaces behaviortree_cpp)
+
   # 安装测试数据
   install(FILES test/test_stations.yaml
     DESTINATION share/${PROJECT_NAME}/test)
