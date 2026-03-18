@@ -34,6 +34,8 @@ jobs:
             ros-jazzy-ament-lint-auto \
             ros-jazzy-ament-cmake-lint-cmake \
             ros-jazzy-ament-cmake-xmllint \
+            ros-jazzy-ament-cmake-uncrustify \
+            ros-jazzy-ament-cmake-cppcheck \
             ros-jazzy-behaviortree-cpp \
             libyaml-cpp-dev
 
@@ -45,3 +47,11 @@ jobs:
         run: |
           source /opt/ros/jazzy/setup.bash
           colcon build --event-handlers console_direct+ --symlink-install
+
+      - name: Test
+        working-directory: ros2_ws
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source install/setup.bash
+          colcon test --packages-select delivery_core --event-handlers console_direct+
+          colcon test-result --verbose
