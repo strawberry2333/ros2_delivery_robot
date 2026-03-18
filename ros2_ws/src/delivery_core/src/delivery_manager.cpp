@@ -57,7 +57,7 @@ DeliveryManager::DeliveryManager(const rclcpp::NodeOptions & options)
   wait_confirmation_timeout_sec_ = this->declare_parameter<double>(
         "wait_confirmation_timeout_sec", 60.0);
   action_server_wait_timeout_sec_ = this->declare_parameter<double>(
-        "action_server_wait_timeout_sec", 10.0);
+        "action_server_wait_timeout_sec", 60.0);
 
     // 初始位姿参数：用于 AMCL 定位初始化
   initial_x_ = this->declare_parameter<double>("initial_x", 0.0);
@@ -144,23 +144,27 @@ void DeliveryManager::run()
     return;
   }
 
-    // 发布初始位姿，帮助 AMCL 快速收敛定位
-  if (publish_initial_pose_) {
-    publish_initial_pose();
-  }
-
-    // 等待 TF 链路就绪（map→base_link），确认定位系统正常工作
-  if (!wait_for_tf()) {
-    RCLCPP_ERROR(get_logger(), "TF 链路不可用");
-    return;
-  }
-
-    // --- 准备阶段 5: 等待 delivery_executor Action Server ---
+    // --- 准备阶段 3: 等待 delivery_executor Action Server ---
+    // executor 的 on_activate 包含 Nav2 就绪等待，所以等到 executor 可用时 Nav2 也一定就绪
   if (!wait_for_executor_server()) {
     RCLCPP_ERROR(get_logger(), "ExecuteDelivery action server 不可用");
     return;
   }
 
+    // --- 准备阶段 4: 发布初始位姿 ---
+    // 必须在 Nav2/AMCL 就绪后发布，否则 /initialpose 消息会因无订阅者而丢失
+  if (publish_initial_pose_) {
+    publish_initial_pose();
+  }
+
+    // --- 准备阶段 5: 等待 TF 链路就绪 ---
+    // map→base_link 需要 AMCL 收到初始位姿后才会出现
+  if (!wait_for_tf()) {
+    RCLCPP_ERROR(get_logger(), "TF 链路不可用");
+    return;
+  }
+
+  system_ready_.store(true);
   RCLCPP_INFO(get_logger(),
         "系统就绪，已加载 %zu 个站点。等待订单提交...", stations_.size());
 
@@ -403,6 +407,13 @@ void DeliveryManager::handle_submit_order(
 {
   const auto & order = request->order;
 
+    // 系统启动检查完成前拒绝订单，避免 run() 退出后订单被静默丢弃
+  if (!system_ready_.load()) {
+    response->accepted = false;
+    response->reason = "系统尚未就绪，请稍后重试";
+    return;
+  }
+
     // 验证 order_id 非空——空 ID 无法用于状态追踪和报告查询
   if (order.order_id.empty()) {
     response->accepted = false;
@@ -641,12 +652,14 @@ bool DeliveryManager::load_station_config(const std::string & path)
     if (station.type > 2) {
       RCLCPP_ERROR(get_logger(), "站点 [%s] 类型非法: %u (应为 0/1/2)",
                          station.id.c_str(), station.type);
+      stations_.clear();
       return false;
     }
 
         // 校验 station_id 不重复——重复 ID 会导致后续查找歧义
     if (stations_.count(station.id) > 0) {
       RCLCPP_ERROR(get_logger(), "站点 ID 重复: %s", station.id.c_str());
+      stations_.clear();
       return false;
     }
 

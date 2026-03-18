@@ -16,17 +16,25 @@
 <root BTCPP_format="4" main_tree_to_execute="SingleDelivery">
   <BehaviorTree ID="SingleDelivery">
     <Sequence>
-      <!-- 取货阶段 -->
+      <!-- 取货阶段：导航中 -->
+      <ReportDeliveryStatus order_id="{order_id}" state="1"
+                            station_id="{pickup_station}" progress="0.1"
+                            bt_state="{bt_state}" bt_station="{bt_station}" bt_progress="{bt_progress}" />
       <NavigateToStation    station_id="{pickup_station}" />
       <DockAtStation        station_id="{pickup_station}" />
+      <!-- 取货阶段：到达取货点，等待装货确认 -->
       <ReportDeliveryStatus order_id="{order_id}" state="2"
                             station_id="{pickup_station}" progress="0.3"
                             bt_state="{bt_state}" bt_station="{bt_station}" bt_progress="{bt_progress}" />
       <WaitForConfirmation  confirm_type="load" timeout_sec="60.0" />
 
-      <!-- 送货阶段 -->
+      <!-- 送货阶段：导航中 -->
+      <ReportDeliveryStatus order_id="{order_id}" state="3"
+                            station_id="{dropoff_station}" progress="0.5"
+                            bt_state="{bt_state}" bt_station="{bt_station}" bt_progress="{bt_progress}" />
       <NavigateToStation    station_id="{dropoff_station}" />
       <DockAtStation        station_id="{dropoff_station}" />
+      <!-- 送货阶段：到达送货点，等待卸货确认 -->
       <ReportDeliveryStatus order_id="{order_id}" state="4"
                             station_id="{dropoff_station}" progress="0.8"
                             bt_state="{bt_state}" bt_station="{bt_station}" bt_progress="{bt_progress}" />

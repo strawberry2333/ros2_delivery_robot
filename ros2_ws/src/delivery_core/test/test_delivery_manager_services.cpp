@@ -44,6 +44,7 @@ protected:
       {"publish_initial_pose", false},
         });
     manager_node_ = std::make_shared<delivery_core::DeliveryManager>(options);
+    manager_node_->set_system_ready();
 
         // 创建服务客户端的辅助节点
     client_node_ = rclcpp::Node::make_shared("test_client");

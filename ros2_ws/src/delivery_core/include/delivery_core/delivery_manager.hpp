@@ -100,6 +100,9 @@ public:
      */
   void run();
 
+    /// 测试辅助：跳过 run() 的启动检查，直接标记系统就绪
+  void set_system_ready() {system_ready_.store(true);}
+
 private:
     /**
      * @brief 配送任务状态枚举
@@ -338,7 +341,7 @@ private:
   double tf_wait_timeout_sec_{15.0};            ///< 等待 TF 链路 (map→base_link) 就绪的超时秒数
   double navigation_timeout_sec_{120.0};        ///< 单次导航任务的超时秒数（超时后取消导航）
   double wait_confirmation_timeout_sec_{60.0};   ///< 等待装/卸货确认的超时秒数
-  double action_server_wait_timeout_sec_{10.0};   ///< 等待 Nav2 Action Server 上线的超时秒数
+  double action_server_wait_timeout_sec_{60.0};   ///< 等待 ExecuteDelivery Action Server 上线的超时秒数（executor 激活含 Nav2 等待，需留足余量）
   double initial_x_{0.0};                       ///< 初始位姿 X 坐标（米），发布到 /initialpose
   double initial_y_{0.0};                       ///< 初始位姿 Y 坐标（米），发布到 /initialpose
   double initial_yaw_{0.0};                     ///< 初始位姿偏航角（弧度），发布到 /initialpose
@@ -371,6 +374,9 @@ private:
   std::string current_order_id_;                                               ///< 当前正在执行的订单 ID（空字符串表示无执行中订单）
   std::optional<OrderRecord> current_order_;                                   ///< 当前正在执行的订单记录（用于报告查询）
   std::mutex current_order_mutex_;                                             ///< 保护 current_order_id_ 和 current_order_ 的互斥锁
+
+    // ====== 系统就绪标志 ======
+  std::atomic<bool> system_ready_{false};   ///< run() 完成启动检查后置 true，服务回调据此拒绝过早的请求
 
     // ====== 回调组 ======
     /**

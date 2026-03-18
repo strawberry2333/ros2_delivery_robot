@@ -406,8 +406,9 @@ bool DeliveryLifecycleManager::change_state(
 
     // 异步发送请求，获取 future 用于等待响应
     auto future = node.change_state_client->async_send_request(request);
-    // 同步等待响应，5 秒超时
-    if (future.wait_for(5s) != std::future_status::ready)
+    // 同步等待响应，60 秒超时
+    // executor 的 on_activate 包含 Nav2 就绪等待（最多 30s），需留足余量
+    if (future.wait_for(60s) != std::future_status::ready)
     {
         RCLCPP_ERROR(get_logger(),
             "[DeliveryLifecycleManager] change_state(%u) 超时: %s",

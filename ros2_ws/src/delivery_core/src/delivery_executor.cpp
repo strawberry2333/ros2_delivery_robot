@@ -114,7 +114,15 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_configure(
 DeliveryExecutor::CallbackReturn DeliveryExecutor::on_activate(
   const rclcpp_lifecycle::State &)
 {
-  RCLCPP_INFO(get_logger(), "on_activate: 创建 Action Server...");
+  RCLCPP_INFO(get_logger(), "on_activate: 等待 Nav2 navigate_to_pose action server...");
+
+    // 在暴露 ExecuteDelivery Action Server 之前，确保 Nav2 已就绪
+    // 这保证 manager 等到 executor 可用时 Nav2 也一定可用
+  if (!nav_client_->wait_for_action_server(std::chrono::seconds(30))) {
+    RCLCPP_ERROR(get_logger(), "on_activate: Nav2 navigate_to_pose 不可用，激活失败");
+    return CallbackReturn::FAILURE;
+  }
+  RCLCPP_INFO(get_logger(), "on_activate: Nav2 就绪，创建 Action Server...");
 
     // 创建 ExecuteDelivery Action Server
   action_server_ = rclcpp_action::create_server<ExecuteDelivery>(
@@ -427,13 +435,13 @@ void DeliveryExecutor::execute_bt(
     auto feedback = std::make_shared<ExecuteDelivery::Feedback>();
     auto bb = tree.rootBlackboard();
     unsigned bt_state = DeliveryStatus::STATE_GOING_TO_PICKUP;
-    bb->get("bt_state", bt_state);
+    (void)bb->get("bt_state", bt_state);
     feedback->state = static_cast<uint8_t>(bt_state);
     std::string bt_station;
-    bb->get("bt_station", bt_station);
+    (void)bb->get("bt_station", bt_station);
     feedback->current_station = bt_station;
     float prog = 0.0f;
-    bb->get("bt_progress", prog);
+    (void)bb->get("bt_progress", prog);
     feedback->progress = prog;
     goal_handle->publish_feedback(feedback);
 

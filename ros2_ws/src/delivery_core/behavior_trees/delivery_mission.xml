@@ -34,7 +34,10 @@
       <SubTree ID="SingleDelivery"
                order_id="{order_id}"
                pickup_station="{pickup_station}"
-               dropoff_station="{dropoff_station}" />
+               dropoff_station="{dropoff_station}"
+               bt_state="{bt_state}"
+               bt_station="{bt_station}"
+               bt_progress="{bt_progress}" />
     </Sequence>
   </BehaviorTree>
 
