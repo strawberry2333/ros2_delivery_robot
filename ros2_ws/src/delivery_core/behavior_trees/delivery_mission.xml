@@ -1,6 +1,6 @@
 <!--
   delivery_mission.xml — 带电量检查的配送任务行为树
-  在执行配送前检查电量，电量不足时自动导航到充电桩。
+  在执行配送前检查电量，低电量回充电点待机（demo 级别，不恢复电量）。
 
   黑板变量（由 executor 设置）：
     - order_id: 订单 ID
@@ -21,10 +21,12 @@
         <CheckBattery threshold="20.0" />
         <Sequence>
           <ReportDeliveryStatus order_id="{order_id}" state="1"
-                                station_id="charge_home" progress="0.0" />
+                                station_id="charge_home" progress="0.0"
+                                bt_state="{bt_state}" bt_station="{bt_station}" bt_progress="{bt_progress}" />
           <NavigateToStation station_id="charge_home" />
-          <ReportDeliveryStatus order_id="{order_id}" state="0"
-                                station_id="charge_home" progress="0.0" />
+          <ReportDeliveryStatus order_id="{order_id}" state="1"
+                                station_id="charge_home" progress="0.1"
+                                bt_state="{bt_state}" bt_station="{bt_station}" bt_progress="{bt_progress}" />
         </Sequence>
       </Fallback>
 

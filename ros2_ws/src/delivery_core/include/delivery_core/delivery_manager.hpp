@@ -28,7 +28,6 @@
 // ROS 2 标准消息
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/pose_with_covariance_stamped.hpp"
-#include "nav2_msgs/action/navigate_to_pose.hpp"    // Nav2 导航 Action 接口
 
 // 项目自定义消息/服务/动作接口
 #include "delivery_interfaces/msg/delivery_order.hpp"
@@ -62,15 +61,13 @@ class DeliveryManager : public rclcpp::Node
 {
 public:
     // --- 类型别名，简化模板类型的使用 ---
-    using NavigateToPose = nav2_msgs::action::NavigateToPose;              ///< Nav2 导航 Action 类型
-    using GoalHandle = rclcpp_action::ClientGoalHandle<NavigateToPose>;    ///< 导航目标句柄类型
-    using PoseStamped = geometry_msgs::msg::PoseStamped;                   ///< 带时间戳的位姿消息
-    using PoseWithCovarianceStamped = geometry_msgs::msg::PoseWithCovarianceStamped;  ///< 带协方差的位姿（用于初始化 AMCL）
-    using DeliveryOrder = delivery_interfaces::msg::DeliveryOrder;         ///< 配送订单消息
-    using DeliveryStatus = delivery_interfaces::msg::DeliveryStatus;       ///< 配送状态消息
-    using StationInfo = delivery_interfaces::msg::StationInfo;             ///< 站点信息消息
-    using ExecuteDelivery = delivery_interfaces::action::ExecuteDelivery;  ///< 配送执行 Action 类型
-    using ExecuteDeliveryGoalHandle = rclcpp_action::ClientGoalHandle<ExecuteDelivery>; ///< 配送 Action Goal 句柄
+  using PoseStamped = geometry_msgs::msg::PoseStamped;                     ///< 带时间戳的位姿消息
+  using PoseWithCovarianceStamped = geometry_msgs::msg::PoseWithCovarianceStamped;    ///< 带协方差的位姿（用于初始化 AMCL）
+  using DeliveryOrder = delivery_interfaces::msg::DeliveryOrder;           ///< 配送订单消息
+  using DeliveryStatus = delivery_interfaces::msg::DeliveryStatus;         ///< 配送状态消息
+  using StationInfo = delivery_interfaces::msg::StationInfo;               ///< 站点信息消息
+  using ExecuteDelivery = delivery_interfaces::action::ExecuteDelivery;    ///< 配送执行 Action 类型
+  using ExecuteDeliveryGoalHandle = rclcpp_action::ClientGoalHandle<ExecuteDelivery>;   ///< 配送 Action Goal 句柄
 
     /**
      * @brief 构造函数，初始化所有参数、通信接口和回调组。
@@ -84,7 +81,8 @@ public:
      *
      * @note 构造函数不会启动配送循环，需要调用 run() 方法。
      */
-    DeliveryManager();
+  explicit DeliveryManager(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
 
     /**
      * @brief 主运行逻辑，阻塞执行配送循环。
@@ -100,7 +98,7 @@ public:
      * @note 本方法会阻塞调用线程，直到 rclcpp::ok() 返回 false（节点关闭）。
      *       必须在另一个线程中运行 executor.spin() 来处理 ROS 回调。
      */
-    void run();
+  void run();
 
 private:
     /**
@@ -110,17 +108,17 @@ private:
      * 状态转换是单向线性的：kIdle → kGoingToPickup → kWaitingLoad →
      * kGoingToDropoff → kWaitingUnload → kComplete，任一阶段失败则跳转到 kFailed。
      */
-    enum class DeliveryState
-    {
-        kIdle,             ///< 空闲，订单已入队但尚未开始执行
-        kGoingToPickup,    ///< 正在前往取货站点（Nav2 导航中）
-        kWaitingLoad,      ///< 到达取货点，等待人工装货确认（通过 /confirm_load 服务触发）
-        kGoingToDropoff,   ///< 正在前往送货站点（Nav2 导航中）
-        kWaitingUnload,    ///< 到达送货点，等待人工卸货确认（通过 /confirm_unload 服务触发）
-        kComplete,         ///< 当前订单配送完成（全部阶段成功）
-        kFailed,           ///< 当前订单配送失败（导航失败、确认超时等）
-        kCanceled          ///< 当前订单在执行中被用户取消
-    };
+  enum class DeliveryState
+  {
+    kIdle,                 ///< 空闲，订单已入队但尚未开始执行
+    kGoingToPickup,        ///< 正在前往取货站点（Nav2 导航中）
+    kWaitingLoad,          ///< 到达取货点，等待人工装货确认（通过 /confirm_load 服务触发）
+    kGoingToDropoff,       ///< 正在前往送货站点（Nav2 导航中）
+    kWaitingUnload,        ///< 到达送货点，等待人工卸货确认（通过 /confirm_unload 服务触发）
+    kComplete,             ///< 当前订单配送完成（全部阶段成功）
+    kFailed,               ///< 当前订单配送失败（导航失败、确认超时等）
+    kCanceled              ///< 当前订单在执行中被用户取消
+  };
 
     /**
      * @brief 2D 位姿，用于内部坐标存储
@@ -128,12 +126,12 @@ private:
      * 简化的位姿表示，仅包含平面坐标和朝向角。
      * 由于配送机器人在室内地面运动，不需要完整的 6DOF 位姿。
      */
-    struct Pose2D
-    {
-        double x{0.0};     ///< X 坐标（米），相对于地图坐标系原点
-        double y{0.0};     ///< Y 坐标（米），相对于地图坐标系原点
-        double yaw{0.0};   ///< 偏航角（弧度），表示机器人到达站点后的朝向
-    };
+  struct Pose2D
+  {
+    double x{0.0};         ///< X 坐标（米），相对于地图坐标系原点
+    double y{0.0};         ///< Y 坐标（米），相对于地图坐标系原点
+    double yaw{0.0};       ///< 偏航角（弧度），表示机器人到达站点后的朝向
+  };
 
     /**
      * @brief 站点描述，从 YAML 配置文件加载
@@ -141,12 +139,12 @@ private:
      * 每个站点对应配送环境中的一个物理位置（取货点、送货点或充电桩）。
      * 站点数据在启动时一次性加载，运行期间不可动态修改。
      */
-    struct Station
-    {
-        std::string id;       ///< 站点唯一标识符，如 "station_A"
-        Pose2D pose;          ///< 站点在地图坐标系中的位姿
-        uint8_t type{0};      ///< 站点类型：0=取货点(pickup), 1=送货点(dropoff), 2=充电桩(charge)
-    };
+  struct Station
+  {
+    std::string id;           ///< 站点唯一标识符，如 "station_A"
+    Pose2D pose;              ///< 站点在地图坐标系中的位姿
+    uint8_t type{0};          ///< 站点类型：0=取货点(pickup), 1=送货点(dropoff), 2=充电桩(charge)
+  };
 
     /**
      * @brief 订单记录，含运行时状态追踪信息
@@ -154,13 +152,15 @@ private:
      * 封装了原始订单消息和配送执行过程中的状态信息。
      * 订单完成或失败后会被移入 completed_orders_ 用于历史查询。
      */
-    struct OrderRecord
-    {
-        DeliveryOrder order;          ///< 原始订单消息（order_id, pickup_station, dropoff_station, priority）
-        DeliveryState state{DeliveryState::kIdle};  ///< 当前配送状态，初始为空闲
-        std::string error_msg;        ///< 失败时的错误描述信息，成功时为空
-        rclcpp::Time start_time;      ///< 订单开始执行的时间戳，用于性能统计
-    };
+  struct OrderRecord
+  {
+    DeliveryOrder order;              ///< 原始订单消息（order_id, pickup_station, dropoff_station, priority）
+    DeliveryState state{DeliveryState::kIdle};      ///< 当前配送状态，初始为空闲
+    std::string error_msg;            ///< 失败时的错误描述信息，成功时为空
+    std::string current_station;      ///< 当前关联站点（由 executor feedback 同步）
+    float progress{0.0f};             ///< 当前进度（由 executor feedback 同步）
+    rclcpp::Time start_time;          ///< 订单开始执行的时间戳，用于性能统计
+  };
 
     // ====== 配置加载 ======
 
@@ -182,7 +182,7 @@ private:
      *       yaw: 0.0
      *       station_type: 0
      */
-    bool load_station_config(const std::string & path);
+  bool load_station_config(const std::string & path);
 
     // ====== 环境准备 ======
 
@@ -196,7 +196,7 @@ private:
      *
      * @return 时钟可用返回 true；超时（clock_wait_timeout_sec_）返回 false。
      */
-    bool wait_for_time();
+  bool wait_for_time();
 
     /**
      * @brief 等待 TF 链路就绪 (map → base_link)。
@@ -207,17 +207,8 @@ private:
      *
      * @return 在超时时间（tf_wait_timeout_sec_）内链路就绪返回 true，否则返回 false。
      */
-    bool wait_for_tf();
+  bool wait_for_tf();
 
-    /**
-     * @brief 等待 Nav2 action server 可用。
-     *
-     * Nav2 的 navigate_to_pose action server 在导航栈完全启动后才可用。
-     * 本方法阻塞等待，直到 action server 响应或超时。
-     *
-     * @return action server 可用返回 true；超时（action_server_wait_timeout_sec_）返回 false。
-     */
-    bool wait_for_action_server();
 
     /**
      * @brief 发布初始位姿到 /initialpose 话题。
@@ -229,7 +220,7 @@ private:
      * @note 仅在参数 publish_initial_pose 为 true 时调用。
      *       如果使用真实机器人并依赖其他定位方式，应关闭此功能。
      */
-    void publish_initial_pose();
+  void publish_initial_pose();
 
     // ====== 状态管理 ======
 
@@ -245,10 +236,11 @@ private:
      * @param[in] progress 进度值，范围 [0.0, 1.0]（可选，默认 0.0）。
      * @param[in] error 错误信息（可选，默认空字符串，仅在失败时填充）。
      */
-    void publish_status(const std::string & order_id, DeliveryState state,
-                        const std::string & station = "",
-                        float progress = 0.0f,
-                        const std::string & error = "");
+  void publish_status(
+    const std::string & order_id, DeliveryState state,
+    const std::string & station = "",
+    float progress = 0.0f,
+    const std::string & error = "");
 
     /**
      * @brief 将内部状态枚举转换为 DeliveryStatus 消息中的 uint8 常量。
@@ -259,7 +251,7 @@ private:
      * @param[in] state 内部状态枚举值。
      * @return 对应的 DeliveryStatus 消息常量值。
      */
-    uint8_t state_to_msg(DeliveryState state) const;
+  uint8_t state_to_msg(DeliveryState state) const;
 
     /**
      * @brief 将状态枚举转换为可读的中英文字符串，用于日志输出。
@@ -267,7 +259,7 @@ private:
      * @param[in] state 内部状态枚举值。
      * @return 格式为 "中文(English)" 的状态描述字符串。
      */
-    std::string state_to_string(DeliveryState state) const;
+  std::string state_to_string(DeliveryState state) const;
 
     // ====== 配送执行 ======
 
@@ -280,9 +272,9 @@ private:
      * @param[in,out] record 订单记录，执行过程中会更新其 state 和 error_msg 字段。
      * @return 全部四个阶段成功返回 true；任一阶段失败返回 false。
      *
-     * @note 当前实现不支持重试。Phase 2 引入行为树后，重试逻辑将在 BT 层面实现。
+     * @note 重试逻辑在 BT 层实现（RetryUntilSuccessful 包裹导航节点）。
      */
-    bool execute_delivery(OrderRecord & record);
+  bool execute_delivery(OrderRecord & record);
 
     /**
      * @brief 等待 /execute_delivery Action Server 可用。
@@ -292,7 +284,7 @@ private:
      *
      * @return Action Server 可用返回 true；超时返回 false。
      */
-    bool wait_for_executor_server();
+  bool wait_for_executor_server();
 
     // ====== 服务回调 ======
 
@@ -309,9 +301,9 @@ private:
      * @param[in] request 包含 DeliveryOrder 消息的请求。
      * @param[out] response accepted=true 表示接受，否则 reason 字段含拒绝原因。
      */
-    void handle_submit_order(
-        const std::shared_ptr<delivery_interfaces::srv::SubmitOrder::Request> request,
-        std::shared_ptr<delivery_interfaces::srv::SubmitOrder::Response> response);
+  void handle_submit_order(
+    const std::shared_ptr<delivery_interfaces::srv::SubmitOrder::Request> request,
+    std::shared_ptr<delivery_interfaces::srv::SubmitOrder::Response> response);
 
     /**
      * @brief CancelOrder 服务回调：取消队列中尚未执行的订单。
@@ -322,9 +314,9 @@ private:
      * @param[in] request 包含 order_id 的取消请求。
      * @param[out] response success=true 表示成功取消，否则 reason 字段含失败原因。
      */
-    void handle_cancel_order(
-        const std::shared_ptr<delivery_interfaces::srv::CancelOrder::Request> request,
-        std::shared_ptr<delivery_interfaces::srv::CancelOrder::Response> response);
+  void handle_cancel_order(
+    const std::shared_ptr<delivery_interfaces::srv::CancelOrder::Request> request,
+    std::shared_ptr<delivery_interfaces::srv::CancelOrder::Response> response);
 
     /**
      * @brief GetDeliveryReport 服务回调：查询所有订单的配送状态报告。
@@ -334,53 +326,51 @@ private:
      * @param[in] request 空请求（无输入参数）。
      * @param[out] response reports 字段包含所有订单的 DeliveryStatus 列表。
      */
-    void handle_get_report(
-        const std::shared_ptr<delivery_interfaces::srv::GetDeliveryReport::Request> request,
-        std::shared_ptr<delivery_interfaces::srv::GetDeliveryReport::Response> response);
+  void handle_get_report(
+    const std::shared_ptr<delivery_interfaces::srv::GetDeliveryReport::Request> request,
+    std::shared_ptr<delivery_interfaces::srv::GetDeliveryReport::Response> response);
 
     // ====== ROS 参数 ======
-    std::string map_frame_;                     ///< 地图坐标系名称，默认 "map"，所有导航目标点都在此坐标系下
-    std::string base_frame_;                    ///< 机器人本体坐标系名称，默认 "base_link"，用于 TF 查询
-    std::string nav2_action_name_;              ///< Nav2 导航 Action 名称，默认 "navigate_to_pose"
-    std::string station_config_path_;           ///< 站点配置 YAML 文件路径，由 launch 文件传入
-    double clock_wait_timeout_sec_{30.0};       ///< 等待仿真时钟 /clock 的超时秒数
-    double tf_wait_timeout_sec_{15.0};          ///< 等待 TF 链路 (map→base_link) 就绪的超时秒数
-    double navigation_timeout_sec_{120.0};      ///< 单次导航任务的超时秒数（超时后取消导航）
-    double wait_confirmation_timeout_sec_{60.0}; ///< 等待装/卸货确认的超时秒数
-    double action_server_wait_timeout_sec_{10.0}; ///< 等待 Nav2 Action Server 上线的超时秒数
-    double initial_x_{0.0};                     ///< 初始位姿 X 坐标（米），发布到 /initialpose
-    double initial_y_{0.0};                     ///< 初始位姿 Y 坐标（米），发布到 /initialpose
-    double initial_yaw_{0.0};                   ///< 初始位姿偏航角（弧度），发布到 /initialpose
-    bool publish_initial_pose_{false};          ///< 是否在启动时发布初始位姿（仿真环境通常需要开启）
-    bool use_sim_time_{true};                   ///< 是否使用仿真时钟（仿真环境设为 true，实机设为 false）
+  std::string map_frame_;                       ///< 地图坐标系名称，默认 "map"，所有导航目标点都在此坐标系下
+  std::string base_frame_;                      ///< 机器人本体坐标系名称，默认 "base_link"，用于 TF 查询
+  std::string station_config_path_;             ///< 站点配置 YAML 文件路径，由 launch 文件传入
+  double clock_wait_timeout_sec_{30.0};         ///< 等待仿真时钟 /clock 的超时秒数
+  double tf_wait_timeout_sec_{15.0};            ///< 等待 TF 链路 (map→base_link) 就绪的超时秒数
+  double navigation_timeout_sec_{120.0};        ///< 单次导航任务的超时秒数（超时后取消导航）
+  double wait_confirmation_timeout_sec_{60.0};   ///< 等待装/卸货确认的超时秒数
+  double action_server_wait_timeout_sec_{10.0};   ///< 等待 Nav2 Action Server 上线的超时秒数
+  double initial_x_{0.0};                       ///< 初始位姿 X 坐标（米），发布到 /initialpose
+  double initial_y_{0.0};                       ///< 初始位姿 Y 坐标（米），发布到 /initialpose
+  double initial_yaw_{0.0};                     ///< 初始位姿偏航角（弧度），发布到 /initialpose
+  bool publish_initial_pose_{false};            ///< 是否在启动时发布初始位姿（仿真环境通常需要开启）
+  bool use_sim_time_{true};                     ///< 是否使用仿真时钟（仿真环境设为 true，实机设为 false）
 
     // ====== 站点数据 ======
-    std::unordered_map<std::string, Station> stations_;   ///< 站点 ID → Station 映射表，启动时从 YAML 加载
+  std::unordered_map<std::string, Station> stations_;     ///< 站点 ID → Station 映射表，启动时从 YAML 加载
 
     // ====== 订单队列 ======
-    std::deque<OrderRecord> order_queue_;                  ///< 待执行订单队列（按优先级排序，高优先级在前）
-    std::vector<OrderRecord> completed_orders_;            ///< 已完成/失败订单的历史记录，用于报告查询
-    std::mutex queue_mutex_;                               ///< 订单队列互斥锁，保护 order_queue_ 和 completed_orders_ 的并发访问
+  std::deque<OrderRecord> order_queue_;                    ///< 待执行订单队列（按优先级排序，高优先级在前）
+  std::vector<OrderRecord> completed_orders_;              ///< 已完成/失败订单的历史记录，用于报告查询
+  std::mutex queue_mutex_;                                 ///< 订单队列互斥锁，保护 order_queue_ 和 completed_orders_ 的并发访问
 
     // ====== ROS 通信接口 ======
-    rclcpp_action::Client<NavigateToPose>::SharedPtr action_client_;   ///< Nav2 导航 Action 客户端，用于发送导航目标
-    rclcpp::Publisher<DeliveryStatus>::SharedPtr status_pub_;           ///< 配送状态发布器，发布到 /delivery_status
-    rclcpp::Publisher<PoseWithCovarianceStamped>::SharedPtr initial_pose_pub_; ///< 初始位姿发布器，发布到 /initialpose 供 AMCL 使用
+  rclcpp::Publisher<DeliveryStatus>::SharedPtr status_pub_;             ///< 配送状态发布器，发布到 /delivery_status
+  rclcpp::Publisher<PoseWithCovarianceStamped>::SharedPtr initial_pose_pub_;   ///< 初始位姿发布器，发布到 /initialpose 供 AMCL 使用
 
     // ====== 服务端 ======
-    rclcpp::Service<delivery_interfaces::srv::SubmitOrder>::SharedPtr submit_order_srv_;      ///< 订单提交服务端 (/submit_order)
-    rclcpp::Service<delivery_interfaces::srv::CancelOrder>::SharedPtr cancel_order_srv_;      ///< 订单取消服务端 (/cancel_order)
-    rclcpp::Service<delivery_interfaces::srv::GetDeliveryReport>::SharedPtr get_report_srv_;  ///< 配送报告查询服务端 (/get_delivery_report)
+  rclcpp::Service<delivery_interfaces::srv::SubmitOrder>::SharedPtr submit_order_srv_;        ///< 订单提交服务端 (/submit_order)
+  rclcpp::Service<delivery_interfaces::srv::CancelOrder>::SharedPtr cancel_order_srv_;        ///< 订单取消服务端 (/cancel_order)
+  rclcpp::Service<delivery_interfaces::srv::GetDeliveryReport>::SharedPtr get_report_srv_;    ///< 配送报告查询服务端 (/get_delivery_report)
 
     // ====== 配送执行 Action Client ======
-    rclcpp_action::Client<ExecuteDelivery>::SharedPtr delivery_action_client_; ///< ExecuteDelivery Action Client，调用 executor
-    ExecuteDeliveryGoalHandle::SharedPtr current_goal_handle_;                 ///< 当前正在执行的配送 Goal 句柄（用于取消）
-    std::mutex goal_handle_mutex_;                                             ///< 保护 current_goal_handle_ 的互斥锁
+  rclcpp_action::Client<ExecuteDelivery>::SharedPtr delivery_action_client_;   ///< ExecuteDelivery Action Client，调用 executor
+  ExecuteDeliveryGoalHandle::SharedPtr current_goal_handle_;                   ///< 当前正在执行的配送 Goal 句柄（用于取消）
+  std::mutex goal_handle_mutex_;                                               ///< 保护 current_goal_handle_ 的互斥锁
 
     // ====== 当前执行中的订单追踪 ======
-    std::string current_order_id_;                                             ///< 当前正在执行的订单 ID（空字符串表示无执行中订单）
-    std::optional<OrderRecord> current_order_;                                 ///< 当前正在执行的订单记录（用于报告查询）
-    std::mutex current_order_mutex_;                                           ///< 保护 current_order_id_ 和 current_order_ 的互斥锁
+  std::string current_order_id_;                                               ///< 当前正在执行的订单 ID（空字符串表示无执行中订单）
+  std::optional<OrderRecord> current_order_;                                   ///< 当前正在执行的订单记录（用于报告查询）
+  std::mutex current_order_mutex_;                                             ///< 保护 current_order_id_ 和 current_order_ 的互斥锁
 
     // ====== 回调组 ======
     /**
@@ -391,7 +381,7 @@ private:
      * - 如果服务回调与主线程在同一 MutuallyExclusive 组中，会导致死锁
      * - Reentrant 组允许多个回调并发执行，确保订单提交/取消等操作不被阻塞
      */
-    rclcpp::CallbackGroup::SharedPtr service_cb_group_;
+  rclcpp::CallbackGroup::SharedPtr service_cb_group_;
 };
 
 }  // namespace delivery_core

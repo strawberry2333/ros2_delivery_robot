@@ -10,24 +10,24 @@
 
 int main(int argc, char ** argv)
 {
-    rclcpp::init(argc, argv);
-    auto node = std::make_shared<delivery_core::DeliveryManager>();
+  rclcpp::init(argc, argv);
+  auto node = std::make_shared<delivery_core::DeliveryManager>();
 
-    rclcpp::executors::MultiThreadedExecutor executor;
-    executor.add_node(node);
+  rclcpp::executors::MultiThreadedExecutor executor;
+  executor.add_node(node);
 
     // 在后台线程 spin executor，处理所有回调
-    auto spin_thread = std::thread([&executor]() {
+  auto spin_thread = std::thread([&executor]() {
         executor.spin();
     });
 
     // 主线程执行配送循环（阻塞）
-    node->run();
+  node->run();
 
     // run() 返回后停止 executor
-    executor.cancel();
-    spin_thread.join();
+  executor.cancel();
+  spin_thread.join();
 
-    rclcpp::shutdown();
-    return 0;
+  rclcpp::shutdown();
+  return 0;
 }
