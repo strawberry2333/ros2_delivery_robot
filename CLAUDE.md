@@ -64,7 +64,7 @@ ros2_delivery_robot/
 ### delivery_core
 - **delivery_manager** — 订单队列管理 + 调度（通过 ExecuteDelivery Action 委托执行）
 - **delivery_executor** — BT 宿主节点，持有 Action Server + 确认服务
-- **BT 叶节点** — NavigateToStation, DockAtStation, WaitForConfirmation, ReportDeliveryStatus（已实现），CheckBattery（Phase 3）
+- **BT 叶节点** — NavigateToStation, DockAtStation, WaitForConfirmation, ReportDeliveryStatus, CheckBattery（电量不足直接 FAILURE 中止配送）
 
 ### delivery_lifecycle
 - 生命周期管理器，管理节点启动顺序

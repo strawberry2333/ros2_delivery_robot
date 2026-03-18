@@ -131,15 +131,11 @@ BT 负责单次配送内的决策流程。支持三种 XML 配置：
 |---|---|
 | `single_delivery.xml` | 基础版：无重试 |
 | `single_delivery_robust.xml` | 带重试：RetryNode(2) 包裹导航 |
-| `delivery_mission.xml` | 完整版：电量检查 + 充电 + SubTree 引用 |
+| `delivery_mission.xml` | 完整版：电量前置检查 + SubTree 引用 |
 
 ```
 Sequence
-├── Fallback (电量检查)
-│   ├── CheckBattery threshold=20%
-│   └── Sequence (充电)
-│       ├── NavigateToStation → charge_home
-│       └── ReportDeliveryStatus
+├── CheckBattery threshold=20%    ← 电量不足直接 FAILURE，中止配送
 ├── RetryNode(2)
 │   └── NavigateToStation → pickup_station
 ├── DockAtStation
@@ -231,7 +227,7 @@ stations:
 - **BT + 状态机混合**：BT 编排单次配送决策，状态机管理订单队列
 - **LifecycleNode**：executor 使用生命周期管理，确保有序启动
 - **RetryNode 重试**：导航失败自动重试，无需修改业务逻辑
-- **模拟电池**：每次配送扣减电量，低电量时导航至充电点待机（demo 级别，不恢复电量）
+- **模拟电池**：每次配送扣减电量，低电量时直接中止配送（demo 级别，不恢复电量）
 
 ## 开发进度
 

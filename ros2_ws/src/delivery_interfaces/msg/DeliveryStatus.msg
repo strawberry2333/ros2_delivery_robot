@@ -44,10 +44,9 @@ uint8 state
 #   STATE_IDLE / STATE_COMPLETE / STATE_FAILED → 可能为空字符串
 string current_station
 
-# 当前导航进度百分比
-# 取值范围：0.0 ~ 1.0（0% 到 100%）
-# 仅在 STATE_GOING_TO_PICKUP 和 STATE_GOING_TO_DROPOFF 状态下有意义
-# 其他状态下固定为 0.0 或 1.0
+# 配送阶段进度（非实时导航距离百分比）
+# 取值范围：0.0 ~ 1.0，由 BT 的 ReportDeliveryStatus 节点在关键阶段设置
+# 用于标识配送流程进展到哪个阶段，而非导航路径的精确完成比例
 float32 progress
 
 # 错误描述信息
