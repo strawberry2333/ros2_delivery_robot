@@ -106,7 +106,6 @@ add_executable(delivery_manager
 ament_target_dependencies(delivery_manager
   rclcpp
   rclcpp_action
-  nav2_msgs
   geometry_msgs
   tf2
   tf2_ros
@@ -193,6 +192,30 @@ if(BUILD_TESTING)
   target_link_libraries(test_report_delivery_status delivery_bt_nodes)
   ament_target_dependencies(test_report_delivery_status
     rclcpp delivery_interfaces behaviortree_cpp)
+
+  # DeliveryManager 服务级测试
+  ament_add_gtest(test_delivery_manager_services
+    test/test_delivery_manager_services.cpp
+    src/delivery_manager.cpp)
+  target_include_directories(test_delivery_manager_services PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+  target_link_libraries(test_delivery_manager_services yaml-cpp)
+  ament_target_dependencies(test_delivery_manager_services
+    rclcpp rclcpp_action geometry_msgs tf2 tf2_ros tf2_geometry_msgs
+    delivery_interfaces)
+
+  # BT 装配测试
+  ament_add_gtest(test_bt_assembly test/test_bt_assembly.cpp)
+  target_link_libraries(test_bt_assembly delivery_bt_nodes)
+  target_compile_definitions(test_bt_assembly PRIVATE
+    BEHAVIOR_TREES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/behavior_trees")
+  ament_target_dependencies(test_bt_assembly
+    rclcpp rclcpp_action nav2_msgs geometry_msgs
+    delivery_interfaces behaviortree_cpp)
+
+  # 安装测试数据
+  install(FILES test/test_stations.yaml
+    DESTINATION share/${PROJECT_NAME}/test)
 endif()
 
 # ament 包注册（必须在 CMakeLists.txt 末尾调用）

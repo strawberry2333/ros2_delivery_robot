@@ -20,34 +20,35 @@ using DeliveryStatus = delivery_interfaces::msg::DeliveryStatus;
 class ReportDeliveryStatusTest : public ::testing::Test
 {
 protected:
-    void SetUp() override
-    {
-        rclcpp::init(0, nullptr);
-        node_ = rclcpp::Node::make_shared("test_report_node");
-        status_pub_ = node_->create_publisher<DeliveryStatus>("delivery_status", 10);
+  void SetUp() override
+  {
+    rclcpp::init(0, nullptr);
+    node_ = rclcpp::Node::make_shared("test_report_node");
+    status_pub_ = node_->create_publisher<DeliveryStatus>("delivery_status", 10);
 
-        factory_.registerBuilder<ReportDeliveryStatus>(
+    factory_.registerBuilder<ReportDeliveryStatus>(
             "ReportDeliveryStatus",
-            [this](const std::string & name, const BT::NodeConfig & config) {
-                return std::make_unique<ReportDeliveryStatus>(
+      [this](const std::string & name, const BT::NodeConfig & config) {
+        return std::make_unique<ReportDeliveryStatus>(
                     name, config, node_, status_pub_);
             });
-    }
+  }
 
-    void TearDown() override
-    {
-        node_.reset();
-        rclcpp::shutdown();
-    }
+  void TearDown() override
+  {
+    node_.reset();
+    rclcpp::shutdown();
+  }
 
-    rclcpp::Node::SharedPtr node_;
-    rclcpp::Publisher<DeliveryStatus>::SharedPtr status_pub_;
-    BT::BehaviorTreeFactory factory_;
+  rclcpp::Node::SharedPtr node_;
+  rclcpp::Publisher<DeliveryStatus>::SharedPtr status_pub_;
+  BT::BehaviorTreeFactory factory_;
 };
 
 TEST_F(ReportDeliveryStatusTest, PublishesStatusAndReturnsSuccess)
 {
-    const std::string xml = R"(
+    const std::string xml =
+    R"(
     <root BTCPP_format="4">
       <BehaviorTree ID="Test">
         <ReportDeliveryStatus order_id="test_order" state="5"
@@ -61,9 +62,9 @@ TEST_F(ReportDeliveryStatusTest, PublishesStatusAndReturnsSuccess)
     bool received = false;
     auto sub = node_->create_subscription<DeliveryStatus>(
         "delivery_status", 10,
-        [&received_msg, &received](const DeliveryStatus::SharedPtr msg) {
-            received_msg = *msg;
-            received = true;
+    [&received_msg, &received](const DeliveryStatus::SharedPtr msg) {
+      received_msg = *msg;
+      received = true;
         });
 
     auto tree = factory_.createTreeFromText(xml);
@@ -76,18 +77,17 @@ TEST_F(ReportDeliveryStatusTest, PublishesStatusAndReturnsSuccess)
     rclcpp::spin_some(node_);
 
     // 验证消息内容
-    if (received)
-    {
-        EXPECT_EQ(received_msg.order_id, "test_order");
-        EXPECT_EQ(received_msg.state, DeliveryStatus::STATE_COMPLETE);
-        EXPECT_EQ(received_msg.current_station, "station_C");
-        EXPECT_FLOAT_EQ(received_msg.progress, 1.0f);
-    }
+    ASSERT_TRUE(received) << "未收到 DeliveryStatus 消息";
+    EXPECT_EQ(received_msg.order_id, "test_order");
+    EXPECT_EQ(received_msg.state, DeliveryStatus::STATE_COMPLETE);
+    EXPECT_EQ(received_msg.current_station, "station_C");
+    EXPECT_FLOAT_EQ(received_msg.progress, 1.0f);
 }
 
 TEST_F(ReportDeliveryStatusTest, PublishesFailedState)
 {
-    const std::string xml = R"(
+    const std::string xml =
+    R"(
     <root BTCPP_format="4">
       <BehaviorTree ID="Test">
         <ReportDeliveryStatus order_id="fail_order" state="6"

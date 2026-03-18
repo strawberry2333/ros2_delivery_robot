@@ -18,18 +18,19 @@ using namespace delivery_core;
 class CheckBatteryTest : public ::testing::Test
 {
 protected:
-    void SetUp() override
-    {
-        factory_.registerNodeType<CheckBattery>("CheckBattery");
-    }
+  void SetUp() override
+  {
+    factory_.registerNodeType<CheckBattery>("CheckBattery");
+  }
 
-    BT::BehaviorTreeFactory factory_;
+  BT::BehaviorTreeFactory factory_;
 };
 
 TEST_F(CheckBatteryTest, BatterySufficient)
 {
     // 电量 50% >= 阈值 20% → SUCCESS
-    const std::string xml = R"(
+    const std::string xml =
+    R"(
     <root BTCPP_format="4">
       <BehaviorTree ID="Test">
         <CheckBattery threshold="20.0" />
@@ -47,7 +48,8 @@ TEST_F(CheckBatteryTest, BatterySufficient)
 TEST_F(CheckBatteryTest, BatteryInsufficient)
 {
     // 电量 10% < 阈值 20% → FAILURE
-    const std::string xml = R"(
+    const std::string xml =
+    R"(
     <root BTCPP_format="4">
       <BehaviorTree ID="Test">
         <CheckBattery threshold="20.0" />
@@ -65,7 +67,8 @@ TEST_F(CheckBatteryTest, BatteryInsufficient)
 TEST_F(CheckBatteryTest, BatteryExactThreshold)
 {
     // 电量 20% == 阈值 20% → SUCCESS（>=）
-    const std::string xml = R"(
+    const std::string xml =
+    R"(
     <root BTCPP_format="4">
       <BehaviorTree ID="Test">
         <CheckBattery threshold="20.0" />
@@ -83,7 +86,8 @@ TEST_F(CheckBatteryTest, BatteryExactThreshold)
 TEST_F(CheckBatteryTest, NoBatteryInfoDefaultsSufficient)
 {
     // 黑板中无 battery_level → SUCCESS
-    const std::string xml = R"(
+    const std::string xml =
+    R"(
     <root BTCPP_format="4">
       <BehaviorTree ID="Test">
         <CheckBattery threshold="20.0" />
