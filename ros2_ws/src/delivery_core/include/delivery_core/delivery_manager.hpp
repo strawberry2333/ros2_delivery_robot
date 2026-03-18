@@ -15,6 +15,7 @@
  */
 
 #include <deque>
+#include <future>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -104,6 +105,8 @@ public:
   void set_system_ready() {system_ready_.store(true);}
 
 private:
+  friend class DeliveryManagerTestAccess;
+
     /**
      * @brief 配送任务状态枚举
      *
@@ -280,6 +283,17 @@ private:
   bool execute_delivery(OrderRecord & record);
 
     /**
+     * @brief 超时后等待 executor 进入终态，避免 manager 过早开始下一个订单。
+     *
+     * @param[in] order_id 当前订单 ID，用于日志。
+     * @param[in] result_future ExecuteDelivery 的结果 future。
+     * @return 在等待窗口内进入终态返回 true，否则返回 false。
+     */
+  bool wait_for_terminal_result_after_cancel(
+    const std::string & order_id,
+    const std::shared_future<ExecuteDeliveryGoalHandle::WrappedResult> & result_future);
+
+    /**
      * @brief 等待 /execute_delivery Action Server 可用。
      *
      * delivery_executor 启动后才会注册 Action Server，
@@ -342,6 +356,7 @@ private:
   double navigation_timeout_sec_{120.0};        ///< 单次导航任务的超时秒数（超时后取消导航）
   double wait_confirmation_timeout_sec_{60.0};   ///< 等待装/卸货确认的超时秒数
   double action_server_wait_timeout_sec_{60.0};   ///< 等待 ExecuteDelivery Action Server 上线的超时秒数（executor 激活含 Nav2 等待，需留足余量）
+  double cancel_completion_wait_timeout_sec_{10.0};   ///< manager 发送取消后等待 executor 进入终态的秒数
   double initial_x_{0.0};                       ///< 初始位姿 X 坐标（米），发布到 /initialpose
   double initial_y_{0.0};                       ///< 初始位姿 Y 坐标（米），发布到 /initialpose
   double initial_yaw_{0.0};                     ///< 初始位姿偏航角（弧度），发布到 /initialpose

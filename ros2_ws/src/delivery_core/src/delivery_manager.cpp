@@ -58,6 +58,8 @@ DeliveryManager::DeliveryManager(const rclcpp::NodeOptions & options)
         "wait_confirmation_timeout_sec", 60.0);
   action_server_wait_timeout_sec_ = this->declare_parameter<double>(
         "action_server_wait_timeout_sec", 60.0);
+  cancel_completion_wait_timeout_sec_ = this->declare_parameter<double>(
+        "cancel_completion_wait_timeout_sec", 10.0);
 
     // 初始位姿参数：用于 AMCL 定位初始化
   initial_x_ = this->declare_parameter<double>("initial_x", 0.0);
@@ -330,11 +332,13 @@ bool DeliveryManager::execute_delivery(OrderRecord & record)
   if (result_future.wait_for(timeout) != std::future_status::ready) {
     record.state = DeliveryState::kFailed;
     record.error_msg = "配送执行总超时";
+
+        // 超时后取消 Goal，并等待 executor 真正进入终态，避免下一单立刻被旧任务占住
+    delivery_action_client_->async_cancel_goal(goal_handle);
+    (void)wait_for_terminal_result_after_cancel(order.order_id, result_future);
+
     publish_status(order.order_id, DeliveryState::kFailed, "", 0.0f,
                        record.error_msg);
-
-        // 超时后取消 Goal
-    delivery_action_client_->async_cancel_goal(goal_handle);
 
     {
       std::lock_guard<std::mutex> lock(goal_handle_mutex_);
@@ -388,6 +392,21 @@ bool DeliveryManager::wait_for_executor_server()
   const std::chrono::duration<double> timeout(action_server_wait_timeout_sec_);
   return delivery_action_client_->wait_for_action_server(
         std::chrono::duration_cast<std::chrono::milliseconds>(timeout));
+}
+
+bool DeliveryManager::wait_for_terminal_result_after_cancel(
+  const std::string & order_id,
+  const std::shared_future<ExecuteDeliveryGoalHandle::WrappedResult> & result_future)
+{
+  const std::chrono::duration<double> timeout(cancel_completion_wait_timeout_sec_);
+  if (result_future.wait_for(timeout) == std::future_status::ready) {
+    return true;
+  }
+
+  RCLCPP_WARN(get_logger(),
+        "订单 [%s] 的取消请求已发送，但 %.1f 秒内未等到 executor 进入终态",
+        order_id.c_str(), cancel_completion_wait_timeout_sec_);
+  return false;
 }
 
 // ======================== 服务回调实现 ========================

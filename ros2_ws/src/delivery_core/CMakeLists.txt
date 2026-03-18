@@ -206,6 +206,17 @@ if(BUILD_TESTING)
     rclcpp rclcpp_action geometry_msgs tf2 tf2_ros tf2_geometry_msgs
     delivery_interfaces)
 
+  # DeliveryManager 超时取消等待测试
+  ament_add_gtest(test_delivery_manager_cancel_wait
+    test/test_delivery_manager_cancel_wait.cpp
+    src/delivery_manager.cpp)
+  target_include_directories(test_delivery_manager_cancel_wait PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+  target_link_libraries(test_delivery_manager_cancel_wait yaml-cpp)
+  ament_target_dependencies(test_delivery_manager_cancel_wait
+    rclcpp rclcpp_action geometry_msgs tf2 tf2_ros tf2_geometry_msgs
+    delivery_interfaces)
+
   # BT 装配测试
   ament_add_gtest(test_bt_assembly test/test_bt_assembly.cpp)
   target_link_libraries(test_bt_assembly delivery_bt_nodes)
