@@ -16,16 +16,16 @@ namespace delivery_core
 class CheckBattery : public BT::ConditionNode
 {
 public:
-    CheckBattery(const std::string & name, const BT::NodeConfig & config);
+  CheckBattery(const std::string & name, const BT::NodeConfig & config);
 
-    static BT::PortsList providedPorts()
-    {
-        return {
-            BT::InputPort<double>("threshold", 20.0, "电量阈值（百分比）"),
-        };
-    }
+  static BT::PortsList providedPorts()
+  {
+    return {
+      BT::InputPort<double>("threshold", 20.0, "电量阈值（百分比）"),
+    };
+  }
 
-    BT::NodeStatus tick() override;
+  BT::NodeStatus tick() override;
 };
 
 }  // namespace delivery_core

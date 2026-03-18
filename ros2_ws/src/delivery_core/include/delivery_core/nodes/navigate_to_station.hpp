@@ -22,17 +22,17 @@ namespace delivery_core
 /// 2D 位姿，用于站点坐标存储
 struct Pose2D
 {
-    double x{0.0};
-    double y{0.0};
-    double yaw{0.0};
+  double x{0.0};
+  double y{0.0};
+  double yaw{0.0};
 };
 
 /// 站点描述
 struct Station
 {
-    std::string id;
-    Pose2D pose;
-    uint8_t type{0};
+  std::string id;
+  Pose2D pose;
+  uint8_t type{0};
 };
 
 /// 站点映射表类型别名
@@ -47,31 +47,31 @@ using StationMap = std::unordered_map<std::string, Station>;
 class NavigateToStation : public BT::StatefulActionNode
 {
 public:
-    using NavigateToPose = nav2_msgs::action::NavigateToPose;
-    using GoalHandle = rclcpp_action::ClientGoalHandle<NavigateToPose>;
+  using NavigateToPose = nav2_msgs::action::NavigateToPose;
+  using GoalHandle = rclcpp_action::ClientGoalHandle<NavigateToPose>;
 
-    NavigateToStation(
-        const std::string & name,
-        const BT::NodeConfig & config,
-        rclcpp::Node::SharedPtr node,
-        rclcpp_action::Client<NavigateToPose>::SharedPtr nav_client);
+  NavigateToStation(
+    const std::string & name,
+    const BT::NodeConfig & config,
+    rclcpp::Node::SharedPtr node,
+    rclcpp_action::Client<NavigateToPose>::SharedPtr nav_client);
 
-    static BT::PortsList providedPorts()
-    {
-        return {BT::InputPort<std::string>("station_id", "目标站点 ID")};
-    }
+  static BT::PortsList providedPorts()
+  {
+    return {BT::InputPort<std::string>("station_id", "目标站点 ID")};
+  }
 
-    BT::NodeStatus onStart() override;
-    BT::NodeStatus onRunning() override;
-    void onHalted() override;
+  BT::NodeStatus onStart() override;
+  BT::NodeStatus onRunning() override;
+  void onHalted() override;
 
 private:
-    rclcpp::Node::SharedPtr node_;
-    rclcpp_action::Client<NavigateToPose>::SharedPtr nav_client_;
+  rclcpp::Node::SharedPtr node_;
+  rclcpp_action::Client<NavigateToPose>::SharedPtr nav_client_;
 
-    GoalHandle::SharedPtr goal_handle_;
-    std::shared_future<GoalHandle::WrappedResult> result_future_;
-    bool result_ready_{false};
+  GoalHandle::SharedPtr goal_handle_;
+  std::shared_future<GoalHandle::WrappedResult> result_future_;
+  bool result_ready_{false};
 };
 
 }  // namespace delivery_core

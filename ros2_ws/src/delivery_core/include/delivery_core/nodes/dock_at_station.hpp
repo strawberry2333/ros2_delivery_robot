@@ -5,6 +5,8 @@
  * @brief BT 叶节点：模拟停靠对接。
  *
  * 到达站点后发布低速 cmd_vel 模拟微调停靠动作。
+ *
+ * @note 当前为 demo 实现：阻塞式 cmd_vel 模拟停靠
  */
 
 #include <string>
@@ -25,22 +27,22 @@ namespace delivery_core
 class DockAtStation : public BT::SyncActionNode
 {
 public:
-    DockAtStation(
-        const std::string & name,
-        const BT::NodeConfig & config,
-        rclcpp::Node::SharedPtr node,
-        rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub);
+  DockAtStation(
+    const std::string & name,
+    const BT::NodeConfig & config,
+    rclcpp::Node::SharedPtr node,
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub);
 
-    static BT::PortsList providedPorts()
-    {
-        return {BT::InputPort<std::string>("station_id", "停靠站点 ID")};
-    }
+  static BT::PortsList providedPorts()
+  {
+    return {BT::InputPort<std::string>("station_id", "停靠站点 ID")};
+  }
 
-    BT::NodeStatus tick() override;
+  BT::NodeStatus tick() override;
 
 private:
-    rclcpp::Node::SharedPtr node_;
-    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub_;
+  rclcpp::Node::SharedPtr node_;
+  rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub_;
 };
 
 }  // namespace delivery_core

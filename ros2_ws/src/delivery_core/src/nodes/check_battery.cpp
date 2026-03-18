@@ -12,32 +12,28 @@ namespace delivery_core
 {
 
 CheckBattery::CheckBattery(
-    const std::string & name, const BT::NodeConfig & config)
-    : BT::ConditionNode(name, config)
+  const std::string & name, const BT::NodeConfig & config)
+: BT::ConditionNode(name, config)
 {
 }
 
 BT::NodeStatus CheckBattery::tick()
 {
-    double threshold = 20.0;
-    getInput("threshold", threshold);
+  double threshold = 20.0;
+  getInput("threshold", threshold);
 
-    double battery_level = 0.0;
-    auto bb = config().blackboard;
-    if (!bb->get("battery_level", battery_level))
-    {
+  double battery_level = 0.0;
+  auto bb = config().blackboard;
+  if (!bb->get("battery_level", battery_level)) {
         // 黑板中无电量信息，默认充足
-        return BT::NodeStatus::SUCCESS;
-    }
+    return BT::NodeStatus::SUCCESS;
+  }
 
-    if (battery_level >= threshold)
-    {
-        return BT::NodeStatus::SUCCESS;
-    }
-    else
-    {
-        return BT::NodeStatus::FAILURE;
-    }
+  if (battery_level >= threshold) {
+    return BT::NodeStatus::SUCCESS;
+  } else {
+    return BT::NodeStatus::FAILURE;
+  }
 }
 
 }  // namespace delivery_core
