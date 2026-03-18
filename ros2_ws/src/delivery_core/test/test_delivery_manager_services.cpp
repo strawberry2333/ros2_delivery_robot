@@ -176,3 +176,27 @@ TEST_F(DeliveryManagerServiceTest, PriorityOrdering)
     EXPECT_EQ(response->reports[0].order_id, "order_high");
     EXPECT_EQ(response->reports[1].order_id, "order_low");
 }
+
+// ========== 站点类型白名单测试 ==========
+
+TEST_F(DeliveryManagerServiceTest, ChargeHomeAsPickupRejected)
+{
+    auto response = submit_order("order_charge_pickup", "charge_home", "station_C");
+    ASSERT_FALSE(response->accepted);
+    EXPECT_NE(response->reason.find("不是取货站"), std::string::npos) << response->reason;
+}
+
+TEST_F(DeliveryManagerServiceTest, ChargeHomeAsDropoffRejected)
+{
+    auto response = submit_order("order_charge_dropoff", "station_A", "charge_home");
+    ASSERT_FALSE(response->accepted);
+    EXPECT_NE(response->reason.find("不是送货站"), std::string::npos) << response->reason;
+}
+
+TEST_F(DeliveryManagerServiceTest, PickupStationAsDropoffRejected)
+{
+    // station_B 是 type=0 (pickup)，不能作为送货点
+    auto response = submit_order("order_wrong_type", "station_A", "station_B");
+    ASSERT_FALSE(response->accepted);
+    EXPECT_NE(response->reason.find("不是送货站"), std::string::npos) << response->reason;
+}

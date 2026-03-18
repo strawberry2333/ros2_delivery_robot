@@ -144,17 +144,19 @@ void DeliveryManager::run()
     return;
   }
 
-    // --- 准备阶段 3: 等待 delivery_executor Action Server ---
-    // executor 的 on_activate 包含 Nav2 就绪等待，所以等到 executor 可用时 Nav2 也一定就绪
+    // --- 准备阶段 3: 发布初始位姿 ---
+    // Nav2 的全局代价地图和 planner_server 需要 map→base_link TF，
+    // 而该 TF 依赖 AMCL 收到初始位姿后才会建立。这里必须先发布初始位姿，
+    // 避免与 executor/Nav2 的就绪等待形成启动死锁。
+  if (publish_initial_pose_) {
+    publish_initial_pose();
+  }
+
+    // --- 准备阶段 4: 等待 delivery_executor Action Server ---
+    // executor 的 on_activate 会等待 bt_navigator 真正进入 Active。
   if (!wait_for_executor_server()) {
     RCLCPP_ERROR(get_logger(), "ExecuteDelivery action server 不可用");
     return;
-  }
-
-    // --- 准备阶段 4: 发布初始位姿 ---
-    // 必须在 Nav2/AMCL 就绪后发布，否则 /initialpose 消息会因无订阅者而丢失
-  if (publish_initial_pose_) {
-    publish_initial_pose();
   }
 
     // --- 准备阶段 5: 等待 TF 链路就绪 ---
@@ -443,17 +445,19 @@ void DeliveryManager::handle_submit_order(
     return;
   }
 
-    // 验证站点类型语义正确性：
+    // 白名单验证站点类型：
     // type=0 是取货站，type=1 是送货站，type=2 是充电桩
-    // 防止用户误将送货站指定为取货点（反之亦然）
-  if (pickup_it->second.type == 1) {
+    // 取货点必须是 type==0，送货点必须是 type==1，充电桩不可作为业务站点
+  if (pickup_it->second.type != 0) {
     response->accepted = false;
-    response->reason = "站点 " + order.pickup_station + " 是送货站，不能作为取货点";
+    response->reason = "站点 " + order.pickup_station +
+      " (type=" + std::to_string(pickup_it->second.type) + ") 不是取货站，不能作为取货点";
     return;
   }
-  if (dropoff_it->second.type == 0) {
+  if (dropoff_it->second.type != 1) {
     response->accepted = false;
-    response->reason = "站点 " + order.dropoff_station + " 是取货站，不能作为送货点";
+    response->reason = "站点 " + order.dropoff_station +
+      " (type=" + std::to_string(dropoff_it->second.type) + ") 不是送货站，不能作为送货点";
     return;
   }
 
