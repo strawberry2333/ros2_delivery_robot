@@ -21,23 +21,21 @@ readonly SRV_CONFIRM_LOAD="/confirm_load"
 readonly SRV_CONFIRM_UNLOAD="/confirm_unload"
 readonly TOPIC_DELIVERY_STATUS="/delivery_status"
 
-# 清理所有 ROS2/Gazebo 相关残留进程
+# 清理本项目的 ROS2/Gazebo 残留进程
+# 使用 delivery_bringup 特征字符串限定范围，避免误杀不相关的 ROS2 会话
 kill_stale_processes() {
   echo "[smoke] 清理残留进程..."
+  # 先杀 launch 父进程（会级联终止其子进程组）
   pkill -f "ros2 launch delivery_bringup" 2>/dev/null || true
+  # 杀本项目特有的节点（名称足够唯一，不会误杀其他 ROS2 会话）
   pkill -f "delivery_manager" 2>/dev/null || true
   pkill -f "delivery_executor" 2>/dev/null || true
   pkill -f "delivery_lifecycle_manager" 2>/dev/null || true
-  pkill -f "bt_navigator" 2>/dev/null || true
-  pkill -f "amcl" 2>/dev/null || true
-  pkill -f "controller_server" 2>/dev/null || true
-  pkill -f "planner_server" 2>/dev/null || true
-  pkill -f "map_server" 2>/dev/null || true
+  # Gazebo 仿真进程（按仓库场景 pattern 匹配）
+  pkill -f "ruby.*gz.*warehouse" 2>/dev/null || true
+  pkill -f "gz sim.*warehouse" 2>/dev/null || true
   pkill -f "ros_gz_bridge" 2>/dev/null || true
   pkill -f "ros_gz_image" 2>/dev/null || true
-  pkill -f "ruby.*gz" 2>/dev/null || true
-  pkill -f "gz sim" 2>/dev/null || true
-  pkill -f "rviz2" 2>/dev/null || true
 }
 
 cleanup() {
@@ -94,11 +92,26 @@ while ! ros2 topic info "$TOPIC_DELIVERY_STATUS" 2>/dev/null | grep -q "Publishe
 done
 echo "[smoke] executor 就绪 (${SECONDS}s)"
 
-# 提交订单
+# 提交订单（带重试：system_ready_ 可能在服务注册后才置 true）
 echo "[smoke] 提交订单 station_A -> station_C..."
-ros2 service call "$SRV_SUBMIT_ORDER" delivery_interfaces/srv/SubmitOrder \
-  "{order: {order_id: 'smoke_001', pickup_station: 'station_A', dropoff_station: 'station_C', priority: 0}}" \
-  2>&1 | head -5
+SECONDS=0
+while (( SECONDS < 60 )); do
+  SUBMIT_OUTPUT=$(ros2 service call "$SRV_SUBMIT_ORDER" delivery_interfaces/srv/SubmitOrder \
+    "{order: {order_id: 'smoke_001', pickup_station: 'station_A', dropoff_station: 'station_C', priority: 0}}" \
+    2>&1 || true)
+  if echo "$SUBMIT_OUTPUT" | grep -q "accepted=True\|accepted: True"; then
+    echo "$SUBMIT_OUTPUT" | head -5
+    echo "[smoke] 订单已接受"
+    break
+  fi
+  echo "[smoke] 订单未被接受，${SECONDS}s 后重试... ($(echo "$SUBMIT_OUTPUT" | grep -o 'reason:.*' | head -1))"
+  sleep "$POLL_INTERVAL"
+done
+if ! echo "$SUBMIT_OUTPUT" | grep -q "accepted=True\|accepted: True"; then
+  echo "[smoke] FAIL: 提交订单超时 (60s)"
+  echo "$SUBMIT_OUTPUT"
+  exit 1
+fi
 
 # 轮询 /delivery_status，在关键阶段自动确认
 echo "[smoke] 轮询配送状态..."
