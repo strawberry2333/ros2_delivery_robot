@@ -27,10 +27,10 @@ kill_stale_processes() {
   echo "[smoke] 清理残留进程..."
   # 先杀 launch 父进程（会级联终止其子进程组）
   pkill -f "ros2 launch delivery_bringup" 2>/dev/null || true
-  # 杀本项目特有的节点（名称足够唯一，不会误杀其他 ROS2 会话）
-  pkill -f "delivery_manager" 2>/dev/null || true
-  pkill -f "delivery_executor" 2>/dev/null || true
-  pkill -f "delivery_lifecycle_manager" 2>/dev/null || true
+  # 杀本项目特有的节点（追加 --ros-args 限定，避免误杀测试二进制或其他工作区实例）
+  pkill -f "delivery_manager.*--ros-args" 2>/dev/null || true
+  pkill -f "delivery_executor.*--ros-args" 2>/dev/null || true
+  pkill -f "delivery_lifecycle_manager.*--ros-args" 2>/dev/null || true
   # Gazebo 仿真进程（server 用 warehouse 限定，GUI client 用 -g 匹配）
   pkill -f "ruby.*gz.*warehouse" 2>/dev/null || true
   pkill -f "gz sim.*warehouse" 2>/dev/null || true
