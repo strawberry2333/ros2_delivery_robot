@@ -41,9 +41,9 @@ cleanup() {
   if $CLEANUP_DONE; then return; fi
   CLEANUP_DONE=true
   echo "[smoke] 清理中..."
-  # 终止后台状态订阅
+  # 终止后台状态订阅（整个进程组，包括 ros2 topic echo 和 grep）
   if [[ -n "${STATUS_SUB_PID:-}" ]] && kill -0 "$STATUS_SUB_PID" 2>/dev/null; then
-    kill "$STATUS_SUB_PID" 2>/dev/null || true
+    kill -- -"$STATUS_SUB_PID" 2>/dev/null || true
   fi
   rm -f "${STATUS_FILE:-}" 2>/dev/null || true
   # 终止 demo launch 进程树
@@ -118,11 +118,12 @@ if ! echo "$SUBMIT_OUTPUT" | grep -q "accepted=True\|accepted: True"; then
 fi
 
 # 启动持久订阅，将最新状态写入临时文件（避免 --once 丢失一次性消息）
-# 用 stdbuf -oL 对 ros2（Python CLI）和 grep 都强制行缓冲，确保状态及时写入文件
+# PYTHONUNBUFFERED=1 确保 Python CLI（ros2 topic echo）stdout 不缓冲
+# 用 setsid 将整条 pipeline 放入独立进程组，清理时一次性终止
 STATUS_FILE=$(mktemp /tmp/smoke_status.XXXXXX)
-stdbuf -oL ros2 topic echo "$TOPIC_DELIVERY_STATUS" --no-arr 2>/dev/null \
+setsid bash -c 'PYTHONUNBUFFERED=1 ros2 topic echo "'"$TOPIC_DELIVERY_STATUS"'" --no-arr 2>/dev/null \
   | stdbuf -oL grep -E "^state:" \
-  > "$STATUS_FILE" &
+  > "'"$STATUS_FILE"'"' &
 STATUS_SUB_PID=$!
 
 # 轮询 /delivery_status，在关键阶段自动确认
