@@ -31,10 +31,9 @@ kill_stale_processes() {
   pkill -f "delivery_manager.*--ros-args" 2>/dev/null || true
   pkill -f "delivery_executor.*--ros-args" 2>/dev/null || true
   pkill -f "delivery_lifecycle_manager.*--ros-args" 2>/dev/null || true
-  # Gazebo 仿真进程（server 用 warehouse 限定，GUI client 用 -g 匹配）
+  # Gazebo 仿真进程（用 warehouse 限定，只杀本项目的仿真实例）
   pkill -f "ruby.*gz.*warehouse" 2>/dev/null || true
   pkill -f "gz sim.*warehouse" 2>/dev/null || true
-  pkill -f "gz sim -g" 2>/dev/null || true
 }
 
 cleanup() {
