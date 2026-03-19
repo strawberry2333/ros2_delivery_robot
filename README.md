@@ -45,7 +45,7 @@ ros2_ws/src/
 ├── delivery_interfaces/    消息/服务/动作定义
 ├── delivery_core/          C++ 核心节点（订单管理 + 导航编排 + BT 节点）
 ├── delivery_lifecycle/     生命周期管理器
-├── delivery_simulation/    备用 warehouse 场景资源（当前仿真使用 TurtleBot3 标准环境）
+├── delivery_simulation/    仓库仿真场景资源（世界模型 + 地图）
 └── delivery_bringup/       Launch 文件 + 配置文件
 ```
 
@@ -235,7 +235,7 @@ stations:
 - [x] Phase 2：行为树 + 停靠确认
 - [x] Phase 3：多订单 + 生命周期 + 工程化
 
-> 核心功能骨架已实现。电量充电流程为 demo 级别，仿真使用 TurtleBot3 标准环境。
+> 核心功能骨架已实现。低电量时直接中止当前配送（demo 级别，不恢复电量），仿真默认使用自定义仓库场景。
 
 详见 [plan/](plan/) 目录。
 

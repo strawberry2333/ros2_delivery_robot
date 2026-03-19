@@ -19,5 +19,8 @@ compile_commands.json
 __pycache__/
 *.pyc
 
+# Claude Code
+.claude/
+
 # Misc
 suggestions.md

@@ -133,6 +133,6 @@ ros2 service call /get_delivery_report delivery_interfaces/srv/GetDeliveryReport
 - [x] Phase 2: 行为树 + 停靠确认（delivery_executor BT 宿主 + 4 个 BT 叶节点）
 - [x] Phase 3: 多订单 + 生命周期 + 工程化
 
-> 核心功能骨架已实现。电量充电流程为 demo 级别（不恢复电量），仿真使用 TurtleBot3 标准环境。
+> 核心功能骨架已实现。低电量时直接中止当前配送（demo 级别，不恢复电量），仿真默认使用自定义仓库场景。
 
 详见 `plan/` 目录下的分阶段计划文档。
