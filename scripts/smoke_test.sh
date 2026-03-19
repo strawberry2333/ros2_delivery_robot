@@ -84,17 +84,17 @@ while ! ros2 service list 2>/dev/null | grep -q "$SRV_SUBMIT_ORDER"; do
 done
 echo "[smoke] $SRV_SUBMIT_ORDER 可用 (${SECONDS}s)"
 
-# 额外等待 /delivery_status topic 有 publisher，确认 executor 已激活
-echo "[smoke] 等待 delivery_executor 激活..."
+# 等待 /delivery_status topic 有 2 个 publisher（delivery_manager + delivery_executor 都就绪）
+echo "[smoke] 等待配送节点就绪..."
 SECONDS=0
-while ! ros2 topic info "$TOPIC_DELIVERY_STATUS" 2>/dev/null | grep -q "Publisher count: [1-9]"; do
+while ! ros2 topic info "$TOPIC_DELIVERY_STATUS" 2>/dev/null | grep -q "Publisher count: [2-9]"; do
   if (( SECONDS > 60 )); then
-    echo "[smoke] WARN: 等待 /delivery_status publisher 超时，继续执行"
+    echo "[smoke] WARN: 等待 /delivery_status 双 publisher 超时，继续执行"
     break
   fi
   sleep "$POLL_INTERVAL"
 done
-echo "[smoke] executor 就绪 (${SECONDS}s)"
+echo "[smoke] 配送节点就绪 (${SECONDS}s)"
 
 # 提交订单（带重试：system_ready_ 可能在服务注册后才置 true）
 echo "[smoke] 提交订单 station_A -> station_C..."
