@@ -34,14 +34,17 @@ kill_stale_processes() {
   # Gazebo 仿真进程（按仓库场景 pattern 匹配）
   pkill -f "ruby.*gz.*warehouse" 2>/dev/null || true
   pkill -f "gz sim.*warehouse" 2>/dev/null || true
-  pkill -f "ros_gz_bridge" 2>/dev/null || true
-  pkill -f "ros_gz_image" 2>/dev/null || true
 }
 
 cleanup() {
   if $CLEANUP_DONE; then return; fi
   CLEANUP_DONE=true
   echo "[smoke] 清理中..."
+  # 终止后台状态订阅
+  if [[ -n "${STATUS_SUB_PID:-}" ]] && kill -0 "$STATUS_SUB_PID" 2>/dev/null; then
+    kill "$STATUS_SUB_PID" 2>/dev/null || true
+  fi
+  rm -f "${STATUS_FILE:-}" 2>/dev/null || true
   # 终止 demo launch 进程树
   if [[ -n "$DEMO_PID" ]] && kill -0 "$DEMO_PID" 2>/dev/null; then
     kill -- -"$DEMO_PID" 2>/dev/null || true
@@ -113,6 +116,13 @@ if ! echo "$SUBMIT_OUTPUT" | grep -q "accepted=True\|accepted: True"; then
   exit 1
 fi
 
+# 启动持久订阅，将最新状态写入临时文件（避免 --once 丢失一次性消息）
+STATUS_FILE=$(mktemp /tmp/smoke_status.XXXXXX)
+ros2 topic echo "$TOPIC_DELIVERY_STATUS" --no-arr 2>/dev/null \
+  | stdbuf -oL grep -E "^state:" \
+  > "$STATUS_FILE" &
+STATUS_SUB_PID=$!
+
 # 轮询 /delivery_status，在关键阶段自动确认
 echo "[smoke] 轮询配送状态..."
 LOAD_CONFIRMED=false
@@ -120,8 +130,8 @@ UNLOAD_CONFIRMED=false
 SECONDS=0
 
 while (( SECONDS < TIMEOUT )); do
-  # 获取最新状态
-  STATUS_LINE=$(timeout 5 ros2 topic echo "$TOPIC_DELIVERY_STATUS" --once --no-arr 2>/dev/null | grep -E "^state:" | head -1 || true)
+  # 读取持久订阅捕获的最新状态
+  STATUS_LINE=$(tail -1 "$STATUS_FILE" 2>/dev/null || true)
   STATE=$(echo "$STATUS_LINE" | awk '/^state:/{print $2}')
 
   case "$STATE" in
