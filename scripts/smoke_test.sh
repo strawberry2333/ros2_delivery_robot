@@ -31,9 +31,10 @@ kill_stale_processes() {
   pkill -f "delivery_manager" 2>/dev/null || true
   pkill -f "delivery_executor" 2>/dev/null || true
   pkill -f "delivery_lifecycle_manager" 2>/dev/null || true
-  # Gazebo 仿真进程（按仓库场景 pattern 匹配）
+  # Gazebo 仿真进程（server 用 warehouse 限定，GUI client 用 -g 匹配）
   pkill -f "ruby.*gz.*warehouse" 2>/dev/null || true
   pkill -f "gz sim.*warehouse" 2>/dev/null || true
+  pkill -f "gz sim -g" 2>/dev/null || true
 }
 
 cleanup() {
@@ -117,8 +118,9 @@ if ! echo "$SUBMIT_OUTPUT" | grep -q "accepted=True\|accepted: True"; then
 fi
 
 # 启动持久订阅，将最新状态写入临时文件（避免 --once 丢失一次性消息）
+# 用 stdbuf -oL 对 ros2（Python CLI）和 grep 都强制行缓冲，确保状态及时写入文件
 STATUS_FILE=$(mktemp /tmp/smoke_status.XXXXXX)
-ros2 topic echo "$TOPIC_DELIVERY_STATUS" --no-arr 2>/dev/null \
+stdbuf -oL ros2 topic echo "$TOPIC_DELIVERY_STATUS" --no-arr 2>/dev/null \
   | stdbuf -oL grep -E "^state:" \
   > "$STATUS_FILE" &
 STATUS_SUB_PID=$!
