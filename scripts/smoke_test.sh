@@ -9,6 +9,12 @@ POLL_INTERVAL=2
 DEMO_PID=""
 CLEANUP_DONE=false
 
+# DeliveryStatus.msg 状态枚举
+readonly STATE_WAITING_LOAD=2
+readonly STATE_WAITING_UNLOAD=4
+readonly STATE_COMPLETE=5
+readonly STATE_FAILED=6
+
 # 清理所有 ROS2/Gazebo 相关残留进程
 kill_stale_processes() {
   echo "[smoke] 清理残留进程..."
@@ -19,12 +25,9 @@ kill_stale_processes() {
   pkill -f "bt_navigator" 2>/dev/null || true
   pkill -f "ros_gz_bridge" 2>/dev/null || true
   pkill -f "ros_gz_image" 2>/dev/null || true
-  pkill -f "gzserver" 2>/dev/null || true
-  pkill -f "gzclient" 2>/dev/null || true
   pkill -f "ruby.*gz" 2>/dev/null || true
+  pkill -f "gz sim" 2>/dev/null || true
   pkill -f "rviz2" 2>/dev/null || true
-  # 等待进程退出
-  sleep 2
 }
 
 cleanup() {
@@ -51,8 +54,7 @@ export TURTLEBOT3_MODEL=waffle_pi
 
 # 启动前先清理旧进程，避免 /clock 多 publisher 污染
 kill_stale_processes
-ros2 daemon stop 2>/dev/null || true
-ros2 daemon start 2>/dev/null || true
+sleep 2
 
 echo "[smoke] 启动 demo (headless, rviz:=false)..."
 setsid ros2 launch delivery_bringup demo.launch.py rviz:=false &
@@ -97,29 +99,29 @@ SECONDS=0
 while (( SECONDS < TIMEOUT )); do
   # 获取最新状态
   STATUS_LINE=$(timeout 5 ros2 topic echo /delivery_status --once --no-arr 2>/dev/null | grep -E "^state:" | head -1 || true)
-  STATE=$(echo "$STATUS_LINE" | grep -oP '^\d+$' || echo "-1")
+  STATE=$(echo "$STATUS_LINE" | grep -oP '(?<=state: )\d+' || echo "-1")
 
   case "$STATE" in
-    2) # STATE_WAITING_LOAD
+    "$STATE_WAITING_LOAD")
       if ! $LOAD_CONFIRMED; then
         echo "[smoke] 状态=WAITING_LOAD, 发送 confirm_load..."
         ros2 service call /confirm_load std_srvs/srv/Trigger 2>&1 | head -3
         LOAD_CONFIRMED=true
       fi
       ;;
-    4) # STATE_WAITING_UNLOAD
+    "$STATE_WAITING_UNLOAD")
       if ! $UNLOAD_CONFIRMED; then
         echo "[smoke] 状态=WAITING_UNLOAD, 发送 confirm_unload..."
         ros2 service call /confirm_unload std_srvs/srv/Trigger 2>&1 | head -3
         UNLOAD_CONFIRMED=true
       fi
       ;;
-    5) # STATE_COMPLETE
-      echo "[smoke] PASS: 配送完成 (state=5), 耗时 ${SECONDS}s"
+    "$STATE_COMPLETE")
+      echo "[smoke] PASS: 配送完成 (state=$STATE_COMPLETE), 耗时 ${SECONDS}s"
       exit 0
       ;;
-    6) # STATE_FAILED
-      echo "[smoke] FAIL: 配送失败 (state=6)"
+    "$STATE_FAILED")
+      echo "[smoke] FAIL: 配送失败 (state=$STATE_FAILED)"
       exit 1
       ;;
   esac
