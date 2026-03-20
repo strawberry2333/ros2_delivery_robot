@@ -2,13 +2,26 @@
 # smoke_test.sh — 端到端冒烟测试：提交订单 → 自动确认 → 验证完成
 # 用法: bash scripts/smoke_test.sh
 # 超时: 420 秒 (wall-clock)
+#
+# Bash 约定说明：
+# - 本脚本要求用 bash 执行，不要用 sh。很多语法（如 [[ ... ]] / (( ... ))）是 bash 扩展。
+# - 函数写法 foo() { ... } 中的花括号不是“代码块对象”，只是 shell 的命令分组语法。
+# - 注释里会顺手解释常见 shell 写法，方便后续自己读。
+#
+# set -euo pipefail 是“严格模式”：
+# -e: 某条命令返回非 0 时，默认立刻退出脚本
+# -u: 使用未定义变量时报错
+# -o pipefail: 管道中任意一段失败，整个管道都算失败
+# 这能减少“脚本默默带错往下跑”的情况。
 set -euo pipefail
 
+# 普通变量。这里没用 readonly，是因为它们不是常量中的“协议字段”，只是脚本配置。
 TIMEOUT=420
 POLL_INTERVAL=2
 DEMO_PID=""
 CLEANUP_DONE=false
 
+# readonly 表示“只读常量”，后面再赋值会报错。
 # DeliveryStatus.msg 状态枚举
 readonly STATE_WAITING_LOAD=2
 readonly STATE_WAITING_UNLOAD=4
@@ -23,9 +36,11 @@ readonly TOPIC_DELIVERY_STATUS="/delivery_status"
 
 # 清理本项目的 ROS2/Gazebo 残留进程
 # 使用 delivery_bringup 特征字符串限定范围，避免误杀不相关的 ROS2 会话
+# 函数定义语法：函数名() { 命令... }
 kill_stale_processes() {
   echo "[smoke] 清理残留进程..."
   # 先杀 launch 父进程（会级联终止其子进程组）
+  # `|| true` 的意思是：就算 pkill 没找到进程返回非 0，也不要让 set -e 终止脚本。
   pkill -f "ros2 launch delivery_bringup" 2>/dev/null || true
   # 杀本项目特有的节点（追加 --ros-args 限定，避免误杀测试二进制或其他工作区实例）
   pkill -f "delivery_manager.*--ros-args" 2>/dev/null || true
@@ -37,11 +52,21 @@ kill_stale_processes() {
 }
 
 cleanup() {
+  # 这里的 if $CLEANUP_DONE 不是字符串判断，而是把变量内容当命令执行。
+  # 因为变量只会是 true/false，而它们正好是 shell 内置命令：
+  # - true  返回 0
+  # - false 返回非 0
   if $CLEANUP_DONE; then return; fi
   CLEANUP_DONE=true
   echo "[smoke] 清理中..."
   # 终止后台状态订阅（整个进程组，包括 ros2 topic echo 和 grep）
+  # [[ ... ]] 是 bash 的条件判断，比 [ ... ] 更安全，支持更自然的字符串判断。
+  # ${STATUS_SUB_PID:-} 表示：如果变量未定义，则展开为空字符串，避免 set -u 报错。
+  # kill -0 PID 不会真的杀进程，只是用来探测“这个 PID 是否存在且可访问”。
   if [[ -n "${STATUS_SUB_PID:-}" ]] && kill -0 "$STATUS_SUB_PID" 2>/dev/null; then
+    # kill -- -PID 的负号表示“给整个进程组发信号”，不是只杀单个进程。
+    # 这里之所以能这样做，是因为前面用 setsid 创建了独立会话/进程组。
+    # -- 用来告诉 kill：“后面不是选项了，哪怕它以 - 开头也当参数解析”。
     kill -- -"$STATUS_SUB_PID" 2>/dev/null || true
   fi
   rm -f "${STATUS_FILE:-}" 2>/dev/null || true
@@ -53,12 +78,20 @@ cleanup() {
   kill_stale_processes
   echo "[smoke] 清理完成"
 }
+
+# trap 的意思是“在收到某些事件/信号时自动执行指定命令”。
+# 这里不管脚本正常结束、Ctrl+C 中断，还是收到 TERM，都会执行 cleanup。
 trap cleanup EXIT INT TERM
 
+# 这两行是 shell 里很常见的“脚本所在目录/工作区目录”求法：
+# - $0 是当前脚本路径
+# - dirname "$0" 取脚本所在目录
+# - $(...) 是命令替换：把命令输出塞进变量
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WS_DIR="$(cd "$SCRIPT_DIR/../ros2_ws" && pwd)"
 
 # 环境准备
+# source 会在“当前 shell”里执行脚本，常用于加载环境变量。
 source /opt/ros/jazzy/setup.bash
 source "$WS_DIR/install/setup.bash"
 export TURTLEBOT3_MODEL=waffle_pi
@@ -68,13 +101,20 @@ kill_stale_processes
 sleep 2
 
 echo "[smoke] 启动 demo (headless, rviz:=false)..."
+# setsid 会让命令成为新的会话/进程组 leader，后面就能用 kill -- -PID 整组清理。
+# 行尾的 & 表示放到后台执行，不阻塞当前脚本。
 setsid ros2 launch delivery_bringup demo.launch.py rviz:=false &
+# $! 是“最近一个后台任务的 PID”。
 DEMO_PID=$!
 
 # 等待 /submit_order 服务可用
 echo "[smoke] 等待 /submit_order 服务..."
+# SECONDS 是 bash 内置变量，赋值为 0 后会开始自动累计脚本运行秒数。
 SECONDS=0
+# while ! cmd; do ... done: 只要 cmd 失败，就循环。
+# grep -q 只关心“有没有匹配”，不输出内容。
 while ! ros2 service list 2>/dev/null | grep -q "$SRV_SUBMIT_ORDER"; do
+  # (( ... )) 是 bash 算术判断，里面直接写数字表达式，不需要 $。
   if (( SECONDS > 120 )); then
     echo "[smoke] FAIL: 等待 $SRV_SUBMIT_ORDER 超时 (120s)"
     exit 1
@@ -99,14 +139,18 @@ echo "[smoke] 配送节点就绪 (${SECONDS}s)"
 echo "[smoke] 提交订单 station_A -> station_C..."
 SECONDS=0
 while (( SECONDS < 60 )); do
+  # $(...) 捕获命令输出；2>&1 把 stderr 合并到 stdout，这样错误信息也能一起拿到。
+  # 后面的 || true 是为了让“服务调用失败”变成可重试，而不是触发 set -e 直接退出。
   SUBMIT_OUTPUT=$(ros2 service call "$SRV_SUBMIT_ORDER" delivery_interfaces/srv/SubmitOrder \
     "{order: {order_id: 'smoke_001', pickup_station: 'station_A', dropoff_station: 'station_C', priority: 0}}" \
     2>&1 || true)
+  # 这里的 grep 正则同时兼容不同 CLI 输出格式：accepted=True 或 accepted: True
   if echo "$SUBMIT_OUTPUT" | grep -q "accepted=True\|accepted: True"; then
     echo "$SUBMIT_OUTPUT" | head -5
     echo "[smoke] 订单已接受"
     break
   fi
+  # 下面这一段是嵌套命令替换：先从输出里抽取 reason，再塞回 echo。
   echo "[smoke] 订单未被接受，${SECONDS}s 后重试... ($(echo "$SUBMIT_OUTPUT" | grep -o 'reason:.*' | head -1))"
   sleep "$POLL_INTERVAL"
 done
@@ -119,7 +163,10 @@ fi
 # 启动持久订阅，将最新状态写入临时文件（避免 --once 丢失一次性消息）
 # PYTHONUNBUFFERED=1 确保 Python CLI（ros2 topic echo）stdout 不缓冲
 # 用 setsid 将整条 pipeline 放入独立进程组，清理时一次性终止
+# mktemp 会创建一个唯一的临时文件，并把路径返回给变量。
 STATUS_FILE=$(mktemp /tmp/smoke_status.XXXXXX)
+# 这里用 bash -c '...' 是因为要把整条管道作为一个整体交给 setsid。
+# 单引号包住“大框架”，再通过 '"$VAR"' 的方式把外层变量拼进去，是 shell 里常见写法。
 setsid bash -c 'PYTHONUNBUFFERED=1 ros2 topic echo "'"$TOPIC_DELIVERY_STATUS"'" --no-arr 2>/dev/null \
   | stdbuf -oL grep -E "^state:" \
   > "'"$STATUS_FILE"'"' &
@@ -127,17 +174,23 @@ STATUS_SUB_PID=$!
 
 # 轮询 /delivery_status，在关键阶段自动确认
 echo "[smoke] 轮询配送状态..."
+# 这两个变量依然用 true/false，当成“布尔命令”来判断。
 LOAD_CONFIRMED=false
 UNLOAD_CONFIRMED=false
 SECONDS=0
 
 while (( SECONDS < TIMEOUT )); do
   # 读取持久订阅捕获的最新状态
+  # tail -1 取最后一行；awk '/^state:/{print $2}' 表示：
+  # - 只匹配以 state: 开头的行
+  # - 打印第 2 列（也就是状态数值）
   STATUS_LINE=$(tail -1 "$STATUS_FILE" 2>/dev/null || true)
   STATE=$(echo "$STATUS_LINE" | awk '/^state:/{print $2}')
 
+  # case ... esac 是 shell 里的多分支匹配，适合根据字符串/常量分情况处理。
   case "$STATE" in
     "$STATE_WAITING_LOAD")
+      # if ! $LOAD_CONFIRMED：同样是把变量内容当 true/false 命令执行。
       if ! $LOAD_CONFIRMED; then
         echo "[smoke] 状态=WAITING_LOAD, 发送 confirm_load..."
         ros2 service call "$SRV_CONFIRM_LOAD" std_srvs/srv/Trigger 2>&1 | head -3
@@ -169,5 +222,7 @@ while (( SECONDS < TIMEOUT )); do
   sleep "$POLL_INTERVAL"
 done
 
+# exit 0 表示成功，非 0 表示失败。
+# 无论走到哪个 exit，前面的 trap 都会先调用 cleanup。
 echo "[smoke] FAIL: 超时 (${TIMEOUT}s)"
 exit 1
