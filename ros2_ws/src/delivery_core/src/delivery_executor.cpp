@@ -2,12 +2,14 @@
  * @file delivery_executor.cpp
  * @brief 配送执行器生命周期节点实现。
  *
- * 已实现为 LifecycleNode。
- * - 构造函数：仅声明参数
- * - on_configure：加载站点配置、注册 BT 节点、创建 publisher/service
- * - on_activate：创建 Action Server
- * - on_deactivate：停止 BT、销毁 Action Server
- * - on_cleanup：清除站点数据
+ * 这个文件实现的是“单订单执行层”，不负责队列调度，也不直接接收用户订单。
+ * 它的职责是把 manager 发来的 ExecuteDelivery goal，转化为一次真实的行为树执行，
+ * 并在执行过程中与 Nav2、装/卸货确认服务、状态话题保持联动。
+ *
+ * 生命周期安排的意义在于把“系统准备”和“对外交付能力”分开：
+ * - configure：加载站点、创建 BT 依赖、注册节点
+ * - activate：确认 Nav2 可用后再开放 action server
+ * - deactivate/cleanup/shutdown：回收 BT 线程、辅助节点和执行状态
  */
 
 #include "delivery_core/delivery_executor.hpp"
@@ -38,7 +40,8 @@ namespace delivery_core
 DeliveryExecutor::DeliveryExecutor()
 : LifecycleNode("delivery_executor")
 {
-  // 仅声明参数，实际初始化在 on_configure 中完成
+  // 构造阶段只做参数声明，不做重资源初始化。
+  // 这样可以让 lifecycle manager 先把节点实例拉起来，再决定何时真正配置。
   station_config_path_ = this->declare_parameter<std::string>("station_config", "");
   tree_file_path_ = this->declare_parameter<std::string>("tree_file", "");
   battery_drain_per_delivery_ = this->declare_parameter<double>(
@@ -49,6 +52,7 @@ DeliveryExecutor::DeliveryExecutor()
 
 DeliveryExecutor::~DeliveryExecutor()
 {
+  // 析构时不依赖外部生命周期状态，直接尝试把所有后台资源收口。
   request_bt_stop();
   join_bt_thread();
   stop_bt_helper_node();
@@ -62,12 +66,13 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_configure(
   RCLCPP_INFO(get_logger(), "on_configure: 开始配置...");
   stop_requested_.store(false, std::memory_order_release);
 
-  // 创建回调组
+  // 将服务回调与其他回调隔离开，避免在 BT 执行或关闭阶段出现互相阻塞。
   service_cb_group_ = this->create_callback_group(
     rclcpp::CallbackGroupType::Reentrant);
 
-  // 创建辅助 Node 供 BT 节点使用（LifecycleNode 不继承 rclcpp::Node）。
-  // 显式禁用全局参数重映射，避免 __node:=delivery_executor 污染辅助节点名称。
+  // BT 叶节点需要普通 rclcpp::Node 接口来创建 action client / publisher。
+  // 但 LifecycleNode 本身不是 Node，所以这里创建一个轻量辅助节点专门给 BT 使用。
+  // 禁用全局参数重映射，避免外部 __node:=... 影响该辅助节点的命名和参数行为。
   bool use_sim_time = false;
   (void)this->get_parameter("use_sim_time", use_sim_time);
   rclcpp::NodeOptions bt_node_options;
@@ -81,22 +86,25 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_configure(
     this->get_namespace(),
     bt_node_options);
 
-  // 创建 Nav2 Action Client（通过辅助节点）
+  // Nav2 导航是 BT 的核心外部依赖。
+  // 这里用辅助节点创建 action client，确保导航请求和 action 回调都能正常处理。
   nav_client_ = rclcpp_action::create_client<NavigateToPose>(
     bt_node_, "navigate_to_pose");
 
-  // 启动辅助节点的 executor spin 线程，确保 Nav2 action client 回调能被处理
+  // 辅助节点本身也需要 spin，否则 action client 的异步回调无法被处理。
+  // 单独开线程可以避免把 BT 执行和回调处理绑死在同一个执行上下文里。
   bt_node_executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
   bt_node_executor_->add_node(bt_node_);
   bt_node_spin_thread_ = std::thread([this]() {
         bt_node_executor_->spin();
       });
 
-  // 创建 Publisher
+  // 状态话题用于向 manager / 外部监控暴露执行进度。
   status_pub_ = this->create_publisher<DeliveryStatus>("delivery_status", 10);
+  // 停靠节点会通过速度话题对机器人做微调运动。
   cmd_vel_pub_ = this->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
 
-  // 创建确认服务端
+  // 装货确认服务：人或上位机调用后，把 load_confirmed_ 置位。
   confirm_load_srv_ = this->create_service<std_srvs::srv::Trigger>(
     "confirm_load",
     [this](const std::shared_ptr<std_srvs::srv::Trigger::Request>,
@@ -108,6 +116,7 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_configure(
     },
     rclcpp::ServicesQoS(), service_cb_group_);
 
+  // 卸货确认服务：与装货确认同理，但对应订单后半段的人工确认。
   confirm_unload_srv_ = this->create_service<std_srvs::srv::Trigger>(
     "confirm_unload",
     [this](const std::shared_ptr<std_srvs::srv::Trigger::Request>,
@@ -119,13 +128,14 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_configure(
     },
     rclcpp::ServicesQoS(), service_cb_group_);
 
-  // 加载站点配置
+  // 站点配置是 executor 判断订单合法性和给 BT 提供环境上下文的基础。
   if (!load_station_config(station_config_path_)) {
     RCLCPP_ERROR(get_logger(), "站点配置加载失败");
     return CallbackReturn::FAILURE;
   }
 
-  // 注册 BT 节点
+  // 站点加载成功后，再把 BT 节点注册进 factory。
+  // 这样 XML 里引用这些节点时，构建行为树才不会失败。
   register_bt_nodes();
 
   RCLCPP_INFO(get_logger(),
@@ -139,8 +149,8 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_activate(
   RCLCPP_INFO(get_logger(), "on_activate: 等待 Nav2 navigate_to_pose action server...");
   stop_requested_.store(false, std::memory_order_release);
 
-  // 在暴露 ExecuteDelivery Action Server 之前，确保 Nav2 已就绪
-  // 这保证 manager 等到 executor 可用时 Nav2 也一定可用
+  // 先确认底层导航栈可用，再对外开放 ExecuteDelivery。
+  // 这样 manager 看到的“可接单”，才是真的可以执行，而不是假就绪。
   if (!nav_client_->wait_for_action_server(std::chrono::seconds(30))) {
     RCLCPP_ERROR(get_logger(), "on_activate: Nav2 navigate_to_pose 不可用，激活失败");
     return CallbackReturn::FAILURE;
@@ -151,7 +161,7 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_activate(
   }
   RCLCPP_INFO(get_logger(), "on_activate: Nav2 已 Active，创建 Action Server...");
 
-  // 创建 ExecuteDelivery Action Server
+  // 只有当 Nav2 和 bt_navigator 都已经 ready，才创建对外 action server。
   action_server_ = rclcpp_action::create_server<ExecuteDelivery>(
     this,
     "execute_delivery",
@@ -168,6 +178,8 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_activate(
 DeliveryExecutor::CallbackReturn DeliveryExecutor::on_deactivate(
   const rclcpp_lifecycle::State &)
 {
+  // 停用阶段优先收敛执行线程，再销毁 action server。
+  // 这样可以避免“goal 还在跑，但服务已经消失”的半关闭状态。
   RCLCPP_INFO(get_logger(), "on_deactivate: 停止服务...");
   request_bt_stop();
   join_bt_thread();
@@ -181,6 +193,7 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_deactivate(
 DeliveryExecutor::CallbackReturn DeliveryExecutor::on_cleanup(
   const rclcpp_lifecycle::State &)
 {
+  // cleanup 比 deactivate 更彻底，适合把节点恢复到可重新 configure 的初始状态。
   RCLCPP_INFO(get_logger(), "on_cleanup: 清理资源...");
   request_bt_stop();
   join_bt_thread();
@@ -197,7 +210,7 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_cleanup(
   confirm_unload_srv_.reset();
   battery_level_.store(100.0);
 
-  // 反注册所有 BT 节点，避免二次 configure 时 "ID already registered" 错误
+  // 反注册所有 BT 节点，避免下次 configure 时重复注册同名 builder。
   factory_.unregisterBuilder("NavigateToStation");
   factory_.unregisterBuilder("DockAtStation");
   factory_.unregisterBuilder("WaitForConfirmation");
@@ -211,6 +224,7 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_cleanup(
 DeliveryExecutor::CallbackReturn DeliveryExecutor::on_shutdown(
   const rclcpp_lifecycle::State &)
 {
+  // shutdown 是进程级退出的最后收口，不再追求重启友好，只追求干净退出。
   RCLCPP_INFO(get_logger(), "on_shutdown: 关闭节点");
   request_bt_stop();
   join_bt_thread();
@@ -223,6 +237,7 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_shutdown(
 
 void DeliveryExecutor::request_bt_stop()
 {
+  // 只设置停止标志，真正的收尾交给 BT tick 循环和 join 逻辑处理。
   stop_requested_.store(true, std::memory_order_release);
 }
 
@@ -232,6 +247,7 @@ void DeliveryExecutor::join_bt_thread()
   {
     std::lock_guard<std::mutex> lock(execution_mutex_);
     if (bt_execution_thread_.joinable()) {
+      // 先把线程对象移出临界区，再在锁外 join，避免阻塞其他需要同一把锁的收尾逻辑。
       thread_to_join = std::move(bt_execution_thread_);
     }
   }
@@ -246,6 +262,7 @@ void DeliveryExecutor::join_bt_thread()
 
 void DeliveryExecutor::stop_bt_helper_node()
 {
+  // 辅助节点有自己的 executor / spin 线程，需要显式 cancel + join。
   if (bt_node_executor_) {
     bt_node_executor_->cancel();
   }
@@ -262,6 +279,8 @@ bool DeliveryExecutor::wait_for_nav2_active(std::chrono::seconds timeout)
 {
   using GetState = lifecycle_msgs::srv::GetState;
 
+  // bt_navigator 的生命周期状态要通过 get_state 服务来确认。
+  // 这里不只等 action server，还要确认导航栈真正进入 Active。
   auto state_client = bt_node_->create_client<GetState>("/bt_navigator/get_state");
   if (!state_client->wait_for_service(timeout)) {
     RCLCPP_ERROR(get_logger(), "等待 /bt_navigator/get_state 服务超时");
@@ -270,6 +289,7 @@ bool DeliveryExecutor::wait_for_nav2_active(std::chrono::seconds timeout)
 
   const auto deadline = std::chrono::steady_clock::now() + timeout;
   while (rclcpp::ok() && std::chrono::steady_clock::now() < deadline) {
+    // 周期性查询生命周期状态，避免一次性请求卡死整个启动流程。
     auto future = state_client->async_send_request(std::make_shared<GetState::Request>());
     if (future.wait_for(1s) != std::future_status::ready) {
       rclcpp::sleep_for(500ms);
@@ -301,6 +321,7 @@ bool DeliveryExecutor::wait_for_nav2_active(std::chrono::seconds timeout)
 void DeliveryExecutor::clear_active_goal(
   const std::shared_ptr<GoalHandleExecuteDelivery> & goal_handle)
 {
+  // 只在当前线程持有的 goal 仍然是 active_goal_handle_ 时才清理，避免误删新任务。
   std::lock_guard<std::mutex> lock(execution_mutex_);
   if (active_goal_handle_ == goal_handle) {
     active_goal_handle_.reset();
@@ -330,6 +351,7 @@ bool DeliveryExecutor::load_station_config(const std::string & path)
     return false;
   }
 
+  // 站点表重建前先清空旧数据，避免重复 configure 时残留上一轮内容。
   stations_.clear();
   for (size_t i = 0; i < stations_node.size(); ++i) {
     const auto & node = stations_node[i];
@@ -346,6 +368,7 @@ bool DeliveryExecutor::load_station_config(const std::string & path)
       return false;
     }
 
+    // 站点 ID 必须唯一，否则 BT 和 manager 都无法稳定地根据 ID 找到目标位置。
     if (stations_.count(station.id) > 0) {
       RCLCPP_ERROR(get_logger(), "站点 ID 重复: %s", station.id.c_str());
       return false;
@@ -364,10 +387,11 @@ bool DeliveryExecutor::load_station_config(const std::string & path)
 
 void DeliveryExecutor::register_bt_nodes()
 {
-    // 使用辅助节点供 BT 叶节点使用
+    // 使用辅助节点供 BT 叶节点使用。
+    // 这些节点本质上都是“把业务状态翻译成机器人动作”的适配器。
   auto node_ptr = bt_node_;
 
-    // NavigateToStation：注入 Node 和 Nav2 Action Client
+    // NavigateToStation：把目标站点翻译成 Nav2 的 navigate_to_pose 请求。
   factory_.registerBuilder<NavigateToStation>(
         "NavigateToStation",
     [node_ptr, this](const std::string & name, const BT::NodeConfig & config) {
@@ -375,7 +399,7 @@ void DeliveryExecutor::register_bt_nodes()
                 name, config, node_ptr, nav_client_);
         });
 
-    // DockAtStation：注入 Node 和 cmd_vel Publisher
+    // DockAtStation：在到站后做最后一点平面内微调，让机器人更贴近站点。
   factory_.registerBuilder<DockAtStation>(
         "DockAtStation",
     [node_ptr, this](const std::string & name, const BT::NodeConfig & config) {
@@ -383,7 +407,7 @@ void DeliveryExecutor::register_bt_nodes()
                 name, config, node_ptr, cmd_vel_pub_);
         });
 
-    // WaitForConfirmation：注入 Node 和确认标志指针
+    // WaitForConfirmation：把人工确认从“外部服务调用”转成 BT 里的等待条件。
   factory_.registerBuilder<WaitForConfirmation>(
         "WaitForConfirmation",
     [node_ptr, this](const std::string & name, const BT::NodeConfig & config) {
@@ -391,7 +415,7 @@ void DeliveryExecutor::register_bt_nodes()
                 name, config, node_ptr, &load_confirmed_, &unload_confirmed_);
         });
 
-    // ReportDeliveryStatus：注入 Node 和 Status Publisher
+    // ReportDeliveryStatus：统一更新状态话题和黑板上的执行进度。
   factory_.registerBuilder<ReportDeliveryStatus>(
         "ReportDeliveryStatus",
     [node_ptr, this](const std::string & name, const BT::NodeConfig & config) {
@@ -399,7 +423,7 @@ void DeliveryExecutor::register_bt_nodes()
                 name, config, node_ptr, status_pub_);
         });
 
-    // CheckBattery：条件节点，从黑板读取电量
+    // CheckBattery：在任务开始前读取黑板中的电量，决定是否允许继续配送。
   factory_.registerNodeType<CheckBattery>("CheckBattery");
 }
 
@@ -411,12 +435,13 @@ rclcpp_action::GoalResponse DeliveryExecutor::handle_goal(
 {
   const auto & order = goal->order;
 
+  // 这里的职责是“接单前过滤”，不是实际执行。
   RCLCPP_INFO(get_logger(), "收到配送请求 [%s]: %s → %s",
                 order.order_id.c_str(),
                 order.pickup_station.c_str(),
                 order.dropoff_station.c_str());
 
-    // 验证站点存在
+    // 先校验订单引用的站点是否都存在，否则后续 BT 无法解析目标。
   if (stations_.find(order.pickup_station) == stations_.end() ||
     stations_.find(order.dropoff_station) == stations_.end())
   {
@@ -425,7 +450,7 @@ rclcpp_action::GoalResponse DeliveryExecutor::handle_goal(
     return rclcpp_action::GoalResponse::REJECT;
   }
 
-    // 单任务模式：在 handle_goal 就预留执行槽位，避免和 handle_accepted 之间出现竞态窗口
+    // 单任务模式：在 goal 接收阶段就预留执行槽位，避免和 handle_accepted 之间出现竞态窗口。
   bool expected = false;
   if (!goal_inflight_.compare_exchange_strong(
       expected, true, std::memory_order_acq_rel, std::memory_order_acquire))
@@ -441,6 +466,7 @@ rclcpp_action::GoalResponse DeliveryExecutor::handle_goal(
 rclcpp_action::CancelResponse DeliveryExecutor::handle_cancel(
   const std::shared_ptr<GoalHandleExecuteDelivery>)
 {
+  // action 层统一接受取消请求，真正的停止动作由 BT tick 循环感知 stop/cancel 后完成。
   RCLCPP_INFO(get_logger(), "收到取消配送请求");
   return rclcpp_action::CancelResponse::ACCEPT;
 }
@@ -448,7 +474,7 @@ rclcpp_action::CancelResponse DeliveryExecutor::handle_cancel(
 void DeliveryExecutor::handle_accepted(
   const std::shared_ptr<GoalHandleExecuteDelivery> goal_handle)
 {
-  // 等待前一个执行线程完成（正常情况下不会触发，因为 handle_goal 拒绝并发）
+  // 为了保持单任务语义，先等待上一次执行线程彻底退出。
   join_bt_thread();
 
   stop_requested_.store(false, std::memory_order_release);
@@ -457,7 +483,7 @@ void DeliveryExecutor::handle_accepted(
     active_goal_handle_ = goal_handle;
   }
 
-  // 在新线程中执行 BT，避免阻塞 executor 线程
+  // BT tick 是长耗时流程，必须放到独立线程，避免阻塞 action server 回调。
   bt_execution_thread_ = std::thread([this, goal_handle]() {
         execute_bt(goal_handle);
       });
@@ -468,11 +494,13 @@ void DeliveryExecutor::handle_accepted(
 void DeliveryExecutor::execute_bt(
   const std::shared_ptr<GoalHandleExecuteDelivery> goal_handle)
 {
+  // 进入执行期后，标记当前节点正在处理一单配送。
   executing_.store(true);
 
   const auto & order = goal_handle->get_goal()->order;
   const auto start_time = std::chrono::steady_clock::now();
   const auto finish_execution = [this, &goal_handle]() {
+      // 收尾动作统一放在 lambda 中，避免在多个 return 分支里重复写一致的清理逻辑。
       executing_.store(false, std::memory_order_release);
       goal_inflight_.store(false, std::memory_order_release);
       clear_active_goal(goal_handle);
@@ -480,11 +508,12 @@ void DeliveryExecutor::execute_bt(
 
   RCLCPP_INFO(get_logger(), "开始执行配送 [%s]", order.order_id.c_str());
 
-  // 重置确认标志，确保每次新订单从干净状态开始
+  // 每单开始前先清零确认标志，避免上一单的人工确认残留到下一单。
   load_confirmed_.store(false, std::memory_order_release);
   unload_confirmed_.store(false, std::memory_order_release);
 
-  // 从 XML 文件创建行为树实例
+  // 根据 tree_file_path_ 生成本单的行为树实例。
+  // 这意味着单次任务的策略不是写死在 C++ 里，而是由 XML 决定。
   BT::Tree tree;
   try {
     tree = factory_.createTreeFromFile(tree_file_path_);
@@ -506,14 +535,16 @@ void DeliveryExecutor::execute_bt(
     return;
   }
 
-  // 设置黑板变量
+  // 黑板是 BT 节点之间共享上下文的核心。
+  // 这里把订单信息、站点表和当前电量一次性写进去，供子节点读取。
   tree.rootBlackboard()->set("order_id", order.order_id);
   tree.rootBlackboard()->set("pickup_station", order.pickup_station);
   tree.rootBlackboard()->set("dropoff_station", order.dropoff_station);
   tree.rootBlackboard()->set("stations", stations_);
   tree.rootBlackboard()->set("battery_level", battery_level_.load());
 
-  // 发布初始状态
+  // 在真正进入 tick 之前，先向外发布一个“已开始前往取货点”的状态，
+  // 这样 manager 和监控端不会在执行初期看到空白。
   {
     DeliveryStatus status_msg;
     status_msg.stamp = this->now();
@@ -524,11 +555,13 @@ void DeliveryExecutor::execute_bt(
     status_pub_->publish(status_msg);
   }
 
-  // BT tick 循环
+  // BT tick 循环是整个执行过程的主驱动器。
+  // 每次 tick 都可能推进状态、发起导航、等待确认或结束任务。
   BT::NodeStatus bt_status = BT::NodeStatus::RUNNING;
   rclcpp::Rate rate(100);  // 100Hz tick
 
   while (rclcpp::ok() && bt_status == BT::NodeStatus::RUNNING) {
+    // 收到外部停机请求时，优先终止本单执行并退出循环。
     if (stop_requested_.load(std::memory_order_acquire)) {
       RCLCPP_INFO(get_logger(), "停止当前配送执行 [%s]", order.order_id.c_str());
       tree.haltTree();
@@ -536,7 +569,7 @@ void DeliveryExecutor::execute_bt(
       return;
     }
 
-    // 检查取消请求
+    // 取消请求来自 action 层。这里进入真正的任务收尾分支。
     if (goal_handle->is_canceling()) {
       RCLCPP_INFO(get_logger(), "配送被取消 [%s]", order.order_id.c_str());
       tree.haltTree();
@@ -560,7 +593,7 @@ void DeliveryExecutor::execute_bt(
       return;
     }
 
-    // tick 一次行为树
+    // 每个周期只 tick 一次，避免把整个线程长时间卡死在单个节点内部。
     bt_status = tree.tickOnce();
 
     if (stop_requested_.load(std::memory_order_acquire)) {
@@ -570,7 +603,8 @@ void DeliveryExecutor::execute_bt(
       return;
     }
 
-    // 从黑板读取 ReportDeliveryStatus 写入的最新状态作为 feedback
+    // 从黑板读取最新状态，转成 action feedback 给 manager。
+    // 这样外部可以看到细粒度进度，而不只是最终成功/失败。
     auto feedback = std::make_shared<ExecuteDelivery::Feedback>();
     auto bb = tree.rootBlackboard();
     unsigned bt_state = DeliveryStatus::STATE_GOING_TO_PICKUP;
@@ -590,6 +624,7 @@ void DeliveryExecutor::execute_bt(
       }
     }
 
+    // 100Hz tick 既足够平滑，又不会把 CPU 占满。
     rate.sleep();
   }
 
@@ -599,7 +634,7 @@ void DeliveryExecutor::execute_bt(
     return;
   }
 
-  // 构造结果
+  // 行为树退出 RUNNING 后，根据最终状态构造 action result。
   auto result = std::make_shared<ExecuteDelivery::Result>();
   const auto elapsed = std::chrono::steady_clock::now() - start_time;
   result->elapsed_time_sec =
@@ -608,7 +643,7 @@ void DeliveryExecutor::execute_bt(
   if (bt_status == BT::NodeStatus::SUCCESS) {
     result->success = true;
 
-        // 配送完成后扣减电量（原子操作，线程安全）
+        // 配送完成后扣减模拟电量，作为 demo 级的任务消耗模型。
     double current = battery_level_.load();
     double updated = std::max(0.0, current - battery_drain_per_delivery_);
     battery_level_.store(updated);
@@ -625,6 +660,7 @@ void DeliveryExecutor::execute_bt(
   } else {
     result->success = false;
     double current_battery = battery_level_.load();
+    // 失败原因区分“电量不足”与“BT 逻辑失败”，便于排查是系统约束还是流程错误。
     if (current_battery < 20.0) {
       result->error_msg = "电量不足 (" +
         std::to_string(static_cast<int>(current_battery)) + "%)，配送中止";
@@ -634,7 +670,7 @@ void DeliveryExecutor::execute_bt(
     RCLCPP_WARN(get_logger(), "配送失败 [%s]: %s",
       order.order_id.c_str(), result->error_msg.c_str());
 
-        // 发布失败状态
+    // 将失败同步到状态话题，让 manager / 监控端能直接看到终态。
     DeliveryStatus fail_msg;
     fail_msg.stamp = this->now();
     fail_msg.order_id = order.order_id;
