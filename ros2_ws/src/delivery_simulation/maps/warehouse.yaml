@@ -1,8 +1,17 @@
-# 仓库配送场景地图元数据
-# 10m × 8m 房间，分辨率 0.05m/pixel
+# 仓库配送场景地图元数据。
+# 这份地图给 Nav2 / AMCL 使用，必须和 worlds/warehouse.sdf 中的场景尺寸、
+# 站点坐标以及 delivery_bringup/config/stations.yaml 保持一致。
+#
+# 房间尺寸约为 10m × 8m，分辨率 0.05m/pixel，适合室内配送 demo。
 image: warehouse.pgm
+# 每个像素代表的实际距离。数值越小，地图越精细，但文件也更大。
 resolution: 0.05
+# 地图左下角在世界坐标系中的原点。
+# 这里的 [-5.0, -4.0, 0.0] 与 world 场景的围墙边界对齐。
 origin: [-5.0, -4.0, 0.0]
+# 栅格图像是否取反。0 表示白色是空闲、黑色是障碍物，符合常见 ROS 地图习惯。
 negate: 0
+# 占用阈值。高于这个值的像素会被视为障碍或不可通行区域。
 occupied_thresh: 0.65
+# 空闲阈值。低于这个值的像素会被视为空闲空间。
 free_thresh: 0.196

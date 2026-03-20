@@ -1,7 +1,8 @@
 # =============================================================================
 # delivery_bringup 包的 CMake 构建配置
 # =============================================================================
-# 本包为纯配置/启动包（不包含 C++ 源码），仅安装 launch 文件和配置文件。
+# 本包为纯配置/启动包，不包含可编译的 C++ 源码。
+# 它的职责是把 launch、配置、RViz 资源安装到 share 目录，供上层 demo 统一调用。
 # 构建命令：cd ros2_ws && colcon build --packages-select delivery_bringup --symlink-install
 # =============================================================================
 
@@ -15,16 +16,18 @@ project(delivery_bringup)
 # 提供 ament_package()、install() 等宏和函数
 find_package(ament_cmake REQUIRED)
 
-# 安装 launch 和 config 目录到包的 share 目录
-# 安装后的路径：install/delivery_bringup/share/delivery_bringup/launch/
-#              install/delivery_bringup/share/delivery_bringup/config/
-# 其他包可通过 get_package_share_directory("delivery_bringup") 获取该路径
-# --symlink-install 模式下会创建符号链接，修改源文件后无需重新构建
+# 安装 launch/config/rviz 资源到 share 目录，供 ros2 launch 和其他包查找。
+# 安装后的路径：
+#   install/delivery_bringup/share/delivery_bringup/launch/
+#   install/delivery_bringup/share/delivery_bringup/config/
+#   install/delivery_bringup/share/delivery_bringup/rviz/
+# 其他包通过 get_package_share_directory("delivery_bringup") 读取这些资源。
+# --symlink-install 模式下会创建符号链接，方便快速迭代 launch 和 YAML。
 install(DIRECTORY
   launch config rviz
   DESTINATION share/${PROJECT_NAME}
 )
 
-# 生成 ament 包索引文件，使本包可被其他 ROS2 工具发现
-# 必须在 CMakeLists.txt 末尾调用
+# 生成 ament 包索引文件，让 ros2 launch / colcon / ament_index 能发现本包资源。
+# 这是纯资源包的“收口”步骤，必须放在 CMakeLists.txt 末尾。
 ament_package()

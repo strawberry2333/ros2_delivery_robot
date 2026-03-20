@@ -7,6 +7,7 @@
   <name>delivery_lifecycle</name>
   <version>0.1.0</version>
   <!-- 包描述：配送机器人节点的生命周期管理器 -->
+  <!-- 该包不是业务执行节点，而是负责把 delivery_executor 等生命周期节点按顺序拉起。 -->
   <description>Lifecycle management for delivery robot nodes</description>
   <maintainer email="wen@todo.todo">wen</maintainer>
   <license>Apache-2.0</license>
@@ -18,8 +19,10 @@
   <!-- rclcpp: ROS 2 C++ 核心库，提供节点、执行器、回调组等基础设施 -->
   <depend>rclcpp</depend>
   <!-- rclcpp_components: 组件化节点支持，用于注册和动态加载节点组件 -->
+  <!-- 这样同一份生命周期管理逻辑既可独立运行，也可被更大的 launch/容器复用。 -->
   <depend>rclcpp_components</depend>
   <!-- lifecycle_msgs: 生命周期相关的标准消息和服务定义（ChangeState, GetState 等） -->
+  <!-- 本包通过这些标准服务远程驱动其它 LifecycleNode 的 configure / activate。 -->
   <depend>lifecycle_msgs</depend>
 
   <!-- 导出构建类型声明，告知 colcon 使用 ament_cmake 进行构建 -->

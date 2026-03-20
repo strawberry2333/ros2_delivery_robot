@@ -4,7 +4,8 @@ cmake_minimum_required(VERSION 3.8)
 # 项目名称，与 package.xml 中的 <name> 保持一致
 project(delivery_lifecycle)
 
-# 启用严格编译警告，尽早发现潜在问题
+# 启用严格编译警告，尽早发现潜在问题。
+# 这个包主要做生命周期编排和线程管理，尽早发现编译期警告比运行时排查更划算。
 # -Wall: 启用常见警告  -Wextra: 启用额外警告  -Wpedantic: 严格遵循 C++ 标准
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -16,16 +17,19 @@ find_package(ament_cmake REQUIRED)
 # rclcpp: ROS 2 C++ 客户端库
 find_package(rclcpp REQUIRED)
 # rclcpp_components: 组件注册宏，支持 composition 模式动态加载
+# 本包同时提供独立可执行文件和组件化加载能力，便于不同部署方式复用同一实现。
 find_package(rclcpp_components REQUIRED)
 # lifecycle_msgs: 生命周期服务消息定义（ChangeState, GetState）
 find_package(lifecycle_msgs REQUIRED)
 
-# 将所有依赖收集到变量中，方便后续统一引用
+# 将所有依赖收集到变量中，方便后续统一引用。
+# 这样后面的 target 配置只需要维护一份依赖列表，减少漏改风险。
 set(DEPS rclcpp rclcpp_components lifecycle_msgs)
 
 # ======================== 构建共享库 ========================
 # 构建为 SHARED 库（而非可执行文件），这是 ROS 2 组件化节点的标准做法，
-# 使节点既可以独立运行，也可以通过 ComponentManager 动态加载
+# 使节点既可以独立运行，也可以通过 ComponentManager 动态加载。
+# 对 lifecycle manager 来说，这意味着它既能作为独立进程运行，也能嵌入更大的组件容器。
 add_library(delivery_lifecycle_manager_component SHARED
   src/delivery_lifecycle_manager.cpp
 )
@@ -39,6 +43,7 @@ target_include_directories(delivery_lifecycle_manager_component PUBLIC
 )
 
 # 链接所有 ROS 2 依赖（自动处理头文件路径和库链接）
+# 这里的依赖主要用于生命周期服务客户端、节点基础设施和组件注册。
 ament_target_dependencies(delivery_lifecycle_manager_component ${DEPS})
 
 # ======================== 组件注册 ========================
@@ -46,6 +51,7 @@ ament_target_dependencies(delivery_lifecycle_manager_component ${DEPS})
 #   PLUGIN: 组件的完整类名（命名空间::类名）
 #   EXECUTABLE: 同时生成一个独立可执行文件，方便直接 ros2 run 启动
 # 这个宏会自动生成组件描述文件，供 ComponentManager 在运行时查找和加载
+# 这让同一份实现既能满足 launch 直接启动，也能满足 composition 部署。
 rclcpp_components_register_node(delivery_lifecycle_manager_component
   PLUGIN "delivery_lifecycle::DeliveryLifecycleManager"
   EXECUTABLE delivery_lifecycle_manager
@@ -68,6 +74,7 @@ install(DIRECTORY include/ DESTINATION include)
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   # 跳过版权和代码风格检查（项目自定义风格）
+  # 当前阶段注释量较多，重点是保证逻辑可读性和启动编排正确性。
   set(ament_cmake_copyright_FOUND TRUE)
   set(ament_cmake_cpplint_FOUND TRUE)
   # 自动发现并添加 lint 测试依赖

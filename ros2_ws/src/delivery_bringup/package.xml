@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <!--
-  delivery_bringup 包清单文件
-  定义包的元信息、构建工具和运行时依赖。
-  本包是配送机器人系统的顶层启动包，负责整合所有子系统。
+  delivery_bringup 包清单文件。
+  这个包不提供业务算法，主要提供系统级启动入口和运行配置。
+  它把 delivery_core、delivery_lifecycle、delivery_simulation 和外部导航栈串成一个可运行 demo。
 -->
 <package format="3">
   <!-- 包名称，必须与 CMakeLists.txt 中的 project() 名称一致 -->
@@ -12,7 +12,7 @@
   <!-- 包版本号，遵循语义版本规范 (major.minor.patch) -->
   <version>0.1.0</version>
 
-  <!-- 包描述：简要说明本包的功能 -->
+  <!-- 包描述：简要说明本包的功能。 -->
   <description>Launch files and configuration for the delivery robot system</description>
 
   <!-- 维护者信息 -->
@@ -21,41 +21,41 @@
   <!-- 开源许可证 -->
   <license>Apache-2.0</license>
 
-  <!-- 构建工具依赖：使用 ament_cmake 构建系统 -->
+  <!-- 构建工具依赖：使用 ament_cmake 构建系统。 -->
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <!-- ======================== 运行时依赖 ======================== -->
-  <!-- 以下依赖仅在运行时需要（exec_depend），构建时不需要 -->
+  <!-- 以下依赖仅在运行时需要（exec_depend），构建时不需要。 -->
 
-  <!-- 本项目的核心功能包：配送管理节点 (delivery_manager) -->
+  <!-- 核心功能包：提供 delivery_manager / delivery_executor。 -->
   <exec_depend>delivery_core</exec_depend>
 
-  <!-- 本项目的自定义消息/服务/动作定义包 -->
+  <!-- 自定义消息/服务/动作定义包。 -->
   <exec_depend>delivery_interfaces</exec_depend>
 
-  <!-- 本项目的生命周期管理包（Phase 3 使用） -->
+  <!-- 生命周期管理包：负责自动 configure / activate delivery_executor。 -->
   <exec_depend>delivery_lifecycle</exec_depend>
 
-  <!-- 本项目的仿真资源包：Gazebo 场景、地图等 -->
+  <!-- 仿真资源包：提供 Gazebo world、地图和 RViz 资源。 -->
   <exec_depend>delivery_simulation</exec_depend>
 
-  <!-- Nav2 导航栈启动包：提供 bringup_launch.py 等标准启动文件 -->
+  <!-- Nav2 导航栈启动包：提供标准 bringup 启动入口。 -->
   <exec_depend>nav2_bringup</exec_depend>
 
-  <!-- TurtleBot3 Gazebo 仿真包：提供机器人模型和仿真世界 -->
+  <!-- TurtleBot3 Gazebo 仿真包：提供机器人模型和仿真相关资源。 -->
   <exec_depend>turtlebot3_gazebo</exec_depend>
 
-  <!-- TurtleBot3 导航配置包：提供预建地图和导航参数 -->
+  <!-- TurtleBot3 导航配置包：提供预建地图和导航参数。 -->
   <exec_depend>turtlebot3_navigation2</exec_depend>
 
-  <!-- ROS2 Launch 框架：提供 LaunchDescription、LaunchConfiguration 等核心类 -->
+  <!-- ROS 2 Launch 框架。 -->
   <exec_depend>launch</exec_depend>
 
-  <!-- ROS2 Launch ROS 扩展：提供 Node、FindPackageShare 等 ROS 特定启动组件 -->
+  <!-- ROS 2 Launch ROS 扩展。 -->
   <exec_depend>launch_ros</exec_depend>
 
   <export>
-    <!-- 声明构建类型为 ament_cmake，colcon 据此选择构建策略 -->
+    <!-- 声明构建类型为 ament_cmake，colcon 据此选择构建策略。 -->
     <build_type>ament_cmake</build_type>
   </export>
 </package>

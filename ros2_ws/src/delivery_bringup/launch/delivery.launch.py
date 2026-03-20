@@ -1,5 +1,6 @@
 """配送系统节点启动脚本。
 
+这个 launch 只负责把“配送业务链路”拉起来，不负责仿真和 Nav2 本身。
 默认使用仓库场景的站点配置和初始位姿。
 """
 
@@ -17,12 +18,18 @@ def generate_launch_description():
     1. delivery_executor (LifecycleNode) — BT 宿主节点
     2. delivery_lifecycle_manager — 自动 configure + activate executor
     3. delivery_manager — 订单管理调度节点
+
+    这个顺序是有意设计的：
+    - 先起 executor，让生命周期节点实例先存在
+    - 再由 lifecycle manager 把 executor 推到 Active
+    - 最后启动 manager 接单，避免“接到单但执行端还没就绪”
     """
 
     bringup_share = FindPackageShare("delivery_bringup")
     core_share = FindPackageShare("delivery_core")
 
-    # 配置文件路径
+    # 默认配置文件路径都来自包自身的 share 目录。
+    # launch 参数可覆盖这些默认值，方便在不同地图或树文件间切换。
     default_station_config = PathJoinSubstitution(
         [bringup_share, "config", "stations.yaml"]
     )
@@ -37,6 +44,7 @@ def generate_launch_description():
     )
 
     # --- 启动参数声明 ---
+    # 这些参数会继续传递给下游节点，不在本 launch 中直接消费。
     station_config_arg = DeclareLaunchArgument(
         "station_config",
         default_value=default_station_config,
@@ -62,6 +70,7 @@ def generate_launch_description():
     )
 
     # --- delivery_executor 节点（LifecycleNode，启动后处于 Unconfigured） ---
+    # 它只提供单订单执行能力，不负责队列和用户接单。
     delivery_executor = Node(
         package="delivery_core",
         executable="delivery_executor",
@@ -77,6 +86,7 @@ def generate_launch_description():
     )
 
     # --- lifecycle_manager 节点（自动 configure + activate executor） ---
+    # 它是启动编排器，确保 executor 在 manager 接单前已经可执行。
     lifecycle_manager = Node(
         package="delivery_lifecycle",
         executable="delivery_lifecycle_manager",
@@ -89,6 +99,7 @@ def generate_launch_description():
     )
 
     # --- delivery_manager 节点（订单管理调度） ---
+    # 它是对外服务入口，负责 submit/cancel/report，并把任务交给 executor。
     delivery_manager = Node(
         package="delivery_core",
         executable="delivery_manager",
@@ -116,7 +127,8 @@ def generate_launch_description():
             initial_y_arg,
             initial_yaw_arg,
             tree_file_arg,
-            # 启动顺序：executor → lifecycle_manager → manager
+            # 启动顺序：executor → lifecycle_manager → manager。
+            # 这里不做额外 Timer 延迟，因为生命周期管理器和 executor 自身会等待依赖就绪。
             delivery_executor,
             lifecycle_manager,
             delivery_manager,

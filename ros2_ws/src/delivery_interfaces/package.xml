@@ -1,50 +1,51 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <!-- 包名称：必须与 CMakeLists.txt 中的 project() 名称一致 -->
+  <!-- 包名称：必须与 CMakeLists.txt 中的 project() 名称一致。
+       下游包会通过这个名字查找接口类型和导出信息。 -->
   <name>delivery_interfaces</name>
 
-  <!-- 语义化版本号：主版本.次版本.修订号 -->
+  <!-- 语义化版本号：主版本.次版本.修订号。 -->
   <version>0.1.0</version>
 
-  <!-- 包描述：配送机器人系统的自定义消息、服务和动作接口定义 -->
+  <!-- 包描述：配送机器人系统的自定义消息、服务和动作接口定义。
+       这个包不承载业务逻辑，只定义通信契约。 -->
   <description>Custom message, service, and action definitions for the delivery robot</description>
 
-  <!-- 维护者信息 -->
+  <!-- 维护者信息。 -->
   <maintainer email="wen@todo.todo">wen</maintainer>
 
-  <!-- 开源许可证 -->
+  <!-- 开源许可证。 -->
   <license>Apache-2.0</license>
 
   <!-- =======================================================================
        构建依赖（Build Dependencies）
        ======================================================================= -->
 
-  <!-- ament_cmake：ROS2 CMake 构建系统基础，所有 ROS2 C++ 包都需要 -->
+  <!-- ament_cmake：ROS 2 CMake 构建系统基础，负责标准化构建、安装和导出流程。 -->
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <!-- rosidl_default_generators：接口代码生成工具链
-       负责将 .msg/.srv/.action 文件编译为 C++ 头文件和 Python 模块 -->
+  <!-- rosidl_default_generators：接口代码生成工具链。
+       负责将 .msg/.srv/.action 文件编译为 C++ 头文件和 Python 模块。 -->
   <buildtool_depend>rosidl_default_generators</buildtool_depend>
 
   <!-- =======================================================================
        运行时依赖（Runtime Dependencies）
        ======================================================================= -->
 
-  <!-- builtin_interfaces：ROS2 内置基础消息类型（如 Time, Duration）
-       本包的 DeliveryStatus.msg 中使用了 builtin_interfaces/Time 类型
-       使用 <depend> 表示编译期和运行期都需要 -->
+  <!-- builtin_interfaces：ROS 2 内置基础消息类型（如 Time, Duration）。
+       本包的状态消息包含时间戳字段，因此编译期和运行期都需要。 -->
   <depend>builtin_interfaces</depend>
 
-  <!-- rosidl_default_runtime：接口运行时支持库
-       其他节点在运行时反序列化本包消息时需要此依赖 -->
+  <!-- rosidl_default_runtime：接口运行时支持库。
+       其他节点在运行时反序列化本包消息时需要这个依赖。 -->
   <exec_depend>rosidl_default_runtime</exec_depend>
 
-  <!-- 声明本包属于 rosidl 接口包组
-       这样 colcon 和 ament 工具能正确识别本包为接口定义包 -->
+  <!-- 声明本包属于 rosidl 接口包组。
+       这样 colcon 和 ament 工具能把它当作接口定义包处理。 -->
   <member_of_group>rosidl_interface_packages</member_of_group>
 
-  <!-- 导出构建类型声明 -->
+  <!-- 导出构建类型声明。 -->
   <export>
     <build_type>ament_cmake</build_type>
   </export>

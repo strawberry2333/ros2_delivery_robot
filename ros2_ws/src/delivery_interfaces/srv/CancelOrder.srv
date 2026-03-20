@@ -2,6 +2,7 @@
 # CancelOrder.srv — 取消配送订单服务
 # =============================================================================
 # 用途：取消一个尚未完成的配送订单。
+# 该服务既可以取消排队中的订单，也可以向当前执行中的 action 发送取消请求。
 # 使用场景：
 #   - 用户临时取消已提交的订单
 #   - 上层系统检测到异常后主动取消订单
@@ -15,20 +16,20 @@
 
 # ---- 请求 (Request) ----
 
-# 要取消的订单 ID
-# 必须与之前通过 SubmitOrder 提交的 order_id 完全匹配
+# 要取消的订单 ID。
+# 必须与之前通过 SubmitOrder 提交的 order_id 完全匹配。
 string order_id
 
 ---
 
 # ---- 响应 (Response) ----
 
-# 取消操作是否成功
-# true — 订单已成功取消
-# false — 取消失败，具体原因见 reason 字段
+# 取消操作是否成功。
+# true - 订单已成功取消。
+# false - 取消失败，具体原因见 reason 字段。
 bool success
 
-# 结果说明
-# success=true 时：返回确认信息，如 "Order cancelled"
-# success=false 时：返回失败原因，如 "Order not found", "Order already completed"
+# 结果说明。
+# success=true 时：返回确认信息，如 "Order cancelled"。
+# success=false 时：返回失败原因，如 "Order not found"、"Order already completed"。
 string reason

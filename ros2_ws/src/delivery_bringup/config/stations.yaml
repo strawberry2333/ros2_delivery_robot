@@ -1,46 +1,50 @@
 # =============================================================================
 # 配送站点配置文件
 # =============================================================================
-# 定义所有配送站点的位置和类型，被 delivery_manager/executor 节点在启动时加载。
-# 坐标基于地图坐标系 (map frame)。
+# 定义所有配送站点的位置和类型，被 delivery_manager / delivery_executor 在启动时加载。
+# 这里的坐标基于地图坐标系 (map frame)，必须与 warehouse 地图和 AMCL 定位结果一致。
 #
 # 字段说明：
 #   station_id   - 站点唯一标识符
 #   x, y         - 地图坐标系中的位置（米）
 #   yaw          - 到达站点后的朝向角（弧度）
 #   station_type - 0=pickup, 1=dropoff, 2=charge
+# 业务影响：
+#   - pickup 站点会被订单提交接口接受为取货点
+#   - dropoff 站点会被订单提交接口接受为送货点
+#   - charge 站点用于预留充电/待机位，不应作为普通订单终点
 # =============================================================================
 
 stations:
-  # 取货站 A：地图右上区域
+  # 取货站 A：地图右上区域，适合模拟第一类取货任务。
   - station_id: "station_A"
     x: 3.0
     y: 2.0
     yaw: 0.0
     station_type: 0   # pickup
 
-  # 取货站 B：地图右下区域
+  # 取货站 B：地图右下区域，供多订单和优先级调度测试使用。
   - station_id: "station_B"
     x: 3.0
     y: -2.0
     yaw: 1.57
     station_type: 0   # pickup
 
-  # 送货站 C：地图左下区域
+  # 送货站 C：地图左下区域，常用于示例订单的终点。
   - station_id: "station_C"
     x: -3.0
     y: -2.0
     yaw: 3.14
     station_type: 1   # dropoff
 
-  # 送货站 D：地图左上区域
+  # 送货站 D：地图左上区域，用于覆盖另一类送货路径。
   - station_id: "station_D"
     x: -3.0
     y: 2.0
     yaw: -1.57
     station_type: 1   # dropoff
 
-  # 充电站/待机点：地图中心
+  # 充电站/待机点：地图中心，作为低电量或空闲时的预留站点。
   - station_id: "charge_home"
     x: 0.0
     y: 0.0

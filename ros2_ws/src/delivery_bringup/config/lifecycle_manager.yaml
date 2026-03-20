@@ -1,7 +1,13 @@
-# 生命周期管理器配置
-# 管理 delivery_executor 节点的生命周期状态转换
+# 生命周期管理器配置。
+# 这个 YAML 只负责告诉 delivery_lifecycle_manager 要管理哪些节点，以及状态切换前等待多久。
+# delivery.launch.py 会把它注入到 lifecycle manager 节点里。
 delivery_lifecycle_manager:
   ros__parameters:
+    # 这里目前只管理 delivery_executor。
+    # 如果后续增加更多 lifecycle 节点，就把名称追加到这个列表中。
     managed_nodes:
       - "delivery_executor"
+
+    # configure 到 activate 之间的缓冲时间。
+    # 用来给 executor、Nav2 和相关服务一点启动余量，减少早期服务未就绪的问题。
     transition_delay_sec: 2.0

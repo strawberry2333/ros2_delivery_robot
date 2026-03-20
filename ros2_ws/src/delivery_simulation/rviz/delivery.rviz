@@ -6,6 +6,7 @@ Panels:
 Visualization Manager:
   Class: ""
   Displays:
+    # 地图层：显示 maps/warehouse.yaml 对应的静态栅格地图。
     - Class: rviz_default_plugins/Map
       Name: Map
       Topic:
@@ -13,23 +14,27 @@ Visualization Manager:
       Enabled: true
       Update Topic:
         Value: /map_updates
+    # TF 层：用于确认 map / odom / base_link 之间的坐标关系是否正常。
     - Class: rviz_default_plugins/TF
       Name: TF
       Enabled: true
       Show Axes: true
       Show Names: true
       Frame Timeout: 15
+    # 机器人模型层：显示 TurtleBot3 本体和其姿态。
     - Class: rviz_default_plugins/RobotModel
       Name: RobotModel
       Description Topic:
         Value: /robot_description
       Enabled: true
+    # 激光层：用于观察仿真传感器和 Nav2 感知输入是否正常。
     - Class: rviz_default_plugins/LaserScan
       Name: LaserScan
       Topic:
         Value: /scan
       Enabled: true
       Size (m): 0.05
+    # 全局路径：Nav2 规划器输出的路径，用于观察到目标站点的规划结果。
     - Class: rviz_default_plugins/Path
       Name: GlobalPath
       Topic:
@@ -37,6 +42,7 @@ Visualization Manager:
       Enabled: true
       Line Style: Lines
       Color: 25; 255; 0
+    # 局部路径：局部规划器输出的路径，用于观察避障和实时修正。
     - Class: rviz_default_plugins/Path
       Name: LocalPath
       Topic:
@@ -44,6 +50,7 @@ Visualization Manager:
       Enabled: true
       Line Style: Lines
       Color: 255; 255; 0
+    # 全局/局部代价地图默认关闭，调试局部避障时可临时打开。
     - Class: rviz_default_plugins/Map
       Name: GlobalCostmap
       Topic:
@@ -54,6 +61,7 @@ Visualization Manager:
       Topic:
         Value: /local_costmap/costmap
       Enabled: false
+    # AMCL 位姿：用于确认机器人在地图中的定位是否收敛。
     - Class: rviz_default_plugins/PoseWithCovariance
       Name: AMCL Pose
       Topic:
@@ -63,6 +71,7 @@ Visualization Manager:
     Fixed Frame: map
     Frame Rate: 30
   Views:
+    # 顶视图适合这个 demo：能同时看见地图、路径、机器人和站点。
     Current:
       Class: rviz_default_plugins/TopDownOrtho
       Name: TopDownOrtho

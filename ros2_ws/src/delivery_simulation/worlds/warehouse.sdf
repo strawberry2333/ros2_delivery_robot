@@ -1,19 +1,22 @@
 <?xml version="1.0" ?>
 <!--
   warehouse.sdf — 仓库配送仿真场景
-  10m × 8m 围墙房间，包含彩色方块标记的配送站点位置。
-  站点坐标与 stations.yaml 中的定义一致。
+  这是整个 demo 的物理世界：Gazebo 在这里生成墙体、货架、站点标记和机器人。
+  10m × 8m 的围合仓库与 maps/warehouse.yaml、delivery_bringup/config/stations.yaml
+  共同定义同一套空间坐标系。
 -->
 <sdf version="1.9">
   <world name="warehouse">
 
-    <!-- 物理引擎和步长 -->
+    <!-- 物理引擎和步长：
+         1ms 的步长让导航和避障表现更平滑，适合这个小型室内 demo。 -->
     <physics name="1ms" type="ignored">
       <max_step_size>0.001</max_step_size>
       <real_time_factor>1.0</real_time_factor>
     </physics>
 
-    <!-- 必要插件 -->
+    <!-- 必要插件：
+         Physics / Sensors / Imu / Contact 等插件保证仿真具有完整的感知和运动闭环。 -->
     <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
     <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
     <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
@@ -23,7 +26,7 @@
     <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu"/>
     <plugin filename="gz-sim-contact-system" name="gz::sim::systems::Contact"/>
 
-    <!-- 光照 -->
+    <!-- 光照：为视觉和 RViz 中的场景观感提供基础照明。 -->
     <light type="directional" name="sun">
       <cast_shadows>true</cast_shadows>
       <pose>0 0 10 0 0 0</pose>
@@ -32,7 +35,7 @@
       <direction>-0.5 0.1 -0.9</direction>
     </light>
 
-    <!-- 地面 -->
+    <!-- 地面：为机器人提供稳定的可行驶平面。 -->
     <model name="ground_plane">
       <static>true</static>
       <link name="link">
@@ -59,7 +62,8 @@
       </link>
     </model>
 
-    <!-- ======================== 仓库围墙 ======================== -->
+    <!-- ======================== 仓库围墙 ========================
+         围墙边界与 warehouse.yaml 的 origin / 尺寸一致，确保地图和世界对得上。 -->
     <!-- 北墙 (Y=4) -->
     <model name="wall_north">
       <static>true</static>
@@ -132,7 +136,8 @@
       </link>
     </model>
 
-    <!-- ======================== 内部障碍物（货架） ======================== -->
+    <!-- ======================== 内部障碍物（货架） ========================
+         货架用于给 Nav2 提供真实一些的通道约束，也让 demo 更接近仓库场景。 -->
     <model name="shelf_1">
       <static>true</static>
       <pose>2.0 1.5 0.4 0 0 0</pose>
@@ -167,7 +172,9 @@
       </link>
     </model>
 
-    <!-- ======================== 站点标记 ======================== -->
+    <!-- ======================== 站点标记 ========================
+         这些彩色方块是业务站点的可视化锚点，不参与逻辑判断；
+         真正用于接单校验和导航的是 delivery_bringup/config/stations.yaml。 -->
     <!-- station_A (pickup) — 绿色 -->
     <model name="marker_station_A">
       <static>true</static>

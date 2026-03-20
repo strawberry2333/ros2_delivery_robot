@@ -1,5 +1,6 @@
 """Nav2 导航栈启动脚本。
 
+这个 launch 只负责导航相关子系统，不启动 Gazebo 也不启动配送业务节点。
 默认加载仓库地图，并使用轻量级 RViz 配置。RViz 启动被延后，
 以减少初始定位阶段的时间戳/队列告警。
 """
@@ -18,11 +19,14 @@ from ament_index_python.packages import get_package_share_directory
 def generate_launch_description():
     """生成 Nav2 导航栈的启动描述。"""
 
+    # 这些包都来自外部 ROS 安装或本工作区的资源包。
     turtlebot3_nav_dir = get_package_share_directory("turtlebot3_navigation2")
     nav2_bringup_dir = get_package_share_directory("nav2_bringup")
     delivery_bringup_dir = get_package_share_directory("delivery_bringup")
     delivery_simulation_dir = get_package_share_directory("delivery_simulation")
 
+    # 根据 TURTLEBOT3_MODEL 选择对应参数文件。
+    # 这是 Nav2 的标准参数入口，不在本包里重新定义。
     turtlebot3_model = os.environ.get("TURTLEBOT3_MODEL", "waffle_pi")
     ros_distro = os.environ.get("ROS_DISTRO", "")
 
@@ -36,11 +40,13 @@ def generate_launch_description():
             turtlebot3_nav_dir, "param", param_file_name
         )
 
+    # 默认地图和 RViz 配置来自本仓库的仿真资源包与 bringup 包。
     default_map = os.path.join(delivery_simulation_dir, "maps", "warehouse.yaml")
     default_rviz_config = os.path.join(
         delivery_bringup_dir, "rviz", "warehouse_navigation.rviz"
     )
 
+    # 直接复用 nav2_bringup 的标准 bringup_launch.py，避免在本包里重复组装 Nav2。
     nav2_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(nav2_bringup_dir, "launch", "bringup_launch.py")
@@ -53,6 +59,8 @@ def generate_launch_description():
         }.items(),
     )
 
+    # RViz 只作为观察工具，不参与业务逻辑。
+    # 延迟启动可以避开 AMCL 初始化阶段的早期告警。
     rviz_node = Node(
         package="rviz2",
         executable="rviz2",
@@ -66,6 +74,7 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration("rviz")),
     )
 
+    # RViz 延迟启动是为了让地图、TF 和定位先稳定下来。
     rviz_launch = TimerAction(
         period=LaunchConfiguration("rviz_delay"),
         actions=[rviz_node],
@@ -73,6 +82,7 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
+            # 启动参数均可通过 ros2 launch 命令覆盖。
             DeclareLaunchArgument(
                 "use_sim_time",
                 default_value="true",
@@ -108,6 +118,7 @@ def generate_launch_description():
                 default_value="1",
                 description="Set LIBGL_ALWAYS_SOFTWARE for RViz (1=true, 0=false)",
             ),
+            # 先启动 Nav2，再按需启动 RViz。
             nav2_launch,
             rviz_launch,
         ]
