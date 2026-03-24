@@ -7,8 +7,10 @@
 - [典型应用场景](#典型应用场景)
 - [技术栈](#技术栈)
 - [系统架构](#系统架构)
+  - [分层总览](#分层总览)
   - [包结构](#包结构)
   - [节点与通信拓扑](#节点与通信拓扑)
+  - [默认订单链路](#默认订单链路)
   - [配送状态机](#配送状态机)
   - [自定义接口](#自定义接口)
   - [行为树架构](#行为树架构)
@@ -37,6 +39,69 @@
 | 构建 | colcon / ament_cmake |
 
 ## 系统架构
+
+### 分层总览
+
+从实现上看，这个项目不是单一节点，而是一个分层的配送业务系统：
+
+- `delivery_interfaces` 定义协议层，统一订单、状态、站点、服务和动作接口。
+- `delivery_core` 定义业务执行层，负责接单调度、单单执行、行为树叶节点。
+- `delivery_lifecycle` 定义系统启动控制层，负责把 `delivery_executor` 推进到可工作状态。
+- `delivery_bringup` 定义装配层，负责 launch、参数和默认行为树选择。
+- `delivery_simulation` 定义仿真资源层，提供 Gazebo world、地图和场景资源。
+
+```mermaid
+flowchart TB
+    User["操作员 / 上位机 / CLI"]
+
+    subgraph Protocol["协议层: delivery_interfaces"]
+        S1["SubmitOrder.srv"]
+        S2["CancelOrder.srv"]
+        S3["GetDeliveryReport.srv"]
+        A1["ExecuteDelivery.action"]
+        M1["DeliveryOrder.msg / DeliveryStatus.msg / StationInfo.msg"]
+    end
+
+    subgraph Core["业务执行层: delivery_core"]
+        Manager["DeliveryManager<br/>订单调度器"]
+        Executor["DeliveryExecutor<br/>单订单执行器 / BT 宿主"]
+        BTN["BT Node Classes<br/>NavigateToStation / DockAtStation / WaitForConfirmation / ReportDeliveryStatus / CheckBattery"]
+    end
+
+    subgraph Lifecycle["启动控制层: delivery_lifecycle"]
+        LCM["DeliveryLifecycleManager<br/>生命周期编排器"]
+    end
+
+    subgraph Bringup["装配层: delivery_bringup"]
+        Launch["demo.launch.py / delivery.launch.py"]
+        Params["stations.yaml / *.yaml"]
+    end
+
+    subgraph Runtime["运行时外部依赖"]
+        Nav2["Nav2 / bt_navigator / navigate_to_pose"]
+        AMCL["AMCL / TF / initialpose"]
+        Gazebo["Gazebo / clock"]
+    end
+
+    User --> S1
+    User --> S2
+    User --> S3
+    S1 --> Manager
+    S2 --> Manager
+    S3 --> Manager
+    Manager --> A1
+    A1 --> Executor
+    Executor --> BTN
+    BTN --> Nav2
+    Manager --> AMCL
+    Manager --> Gazebo
+    LCM -. configure / activate .-> Executor
+    Launch --> Manager
+    Launch --> Executor
+    Launch --> LCM
+    Params --> Manager
+    Params --> Executor
+```
 
 ### 包结构
 
@@ -79,6 +144,33 @@ graph TD
     Executor -- "发布状态" --> StatusTopic
     LCM -. "configure / activate" .-> Executor
 ```
+
+### 默认订单链路
+
+默认 bringup 会加载 `single_delivery_robust.xml`，也就是“带导航重试的单次配送树”，而不是带 `CheckBattery` 的完整任务树。一次订单的默认执行路径如下：
+
+```mermaid
+sequenceDiagram
+    participant User as 用户 / 上位机
+    participant Manager as delivery_manager
+    participant Executor as delivery_executor
+    participant BT as 默认 BT
+    participant Nav2 as Nav2
+
+    User->>Manager: SubmitOrder
+    Manager->>Manager: 校验订单并入优先级队列
+    Manager->>Executor: ExecuteDelivery goal
+    Executor->>BT: 加载 single_delivery_robust.xml
+    BT->>Nav2: 导航到 pickup（失败时自动重试一次）
+    BT->>Executor: 等待 /confirm_load
+    User->>Executor: /confirm_load
+    BT->>Nav2: 导航到 dropoff（失败时自动重试一次）
+    BT->>Executor: 等待 /confirm_unload
+    User->>Executor: /confirm_unload
+    Executor-->>Manager: result + feedback
+```
+
+更细的类级架构、时序和生命周期实现说明见 [docs/architecture.md](docs/architecture.md)。
 
 ### 配送状态机
 
@@ -125,37 +217,47 @@ stateDiagram-v2
 
 ### 行为树架构
 
-BT 负责单次配送内的决策流程。支持三种 XML 配置：
+BT 负责单次配送内的决策流程。当前仓库里有三种 XML 变体：
 
 | XML 文件 | 特点 |
 |---|---|
 | `single_delivery.xml` | 基础版：无重试 |
-| `single_delivery_robust.xml` | 带重试：RetryNode(2) 包裹导航 |
-| `delivery_mission.xml` | 完整版：电量前置检查 + SubTree 引用 |
+| `single_delivery_robust.xml` | 默认 demo 使用；导航失败自动重试一次 |
+| `delivery_mission.xml` | 可选树；在前面增加 `CheckBattery` 条件并引用 `SingleDelivery` 子树 |
 
-```
+默认树的大致流程是：
+
+```text
 Sequence
-├── CheckBattery threshold=20%    ← 电量不足直接 FAILURE，中止配送
-├── RetryNode(2)
-│   └── NavigateToStation → pickup_station
-├── DockAtStation
-├── WaitForConfirmation → load
-├── RetryNode(2)
-│   └── NavigateToStation → dropoff_station
-├── DockAtStation
-├── WaitForConfirmation → unload
+├── ReportDeliveryStatus → going_to_pickup
+├── RetryUntilSuccessful(2) → NavigateToStation(pickup)
+├── DockAtStation(pickup)
+├── ReportDeliveryStatus → waiting_load
+├── WaitForConfirmation(load)
+├── ReportDeliveryStatus → going_to_dropoff
+├── RetryUntilSuccessful(2) → NavigateToStation(dropoff)
+├── DockAtStation(dropoff)
+├── ReportDeliveryStatus → waiting_unload
+├── WaitForConfirmation(unload)
 └── ReportDeliveryStatus → complete
 ```
 
 ### 生命周期管理
 
-`delivery_executor` 为 LifecycleNode，由 `delivery_lifecycle_manager` 管理：
+`delivery_executor` 是 `LifecycleNode`，由 `delivery_lifecycle_manager` 负责推进到 `Active`，保证 manager 接单前执行侧已经 ready：
 
+```mermaid
+stateDiagram-v2
+    [*] --> Unconfigured
+    Unconfigured --> Inactive : on_configure
+    Inactive --> Active : on_activate
+    Active --> Inactive : on_deactivate
+    Inactive --> Unconfigured : on_cleanup
+    Inactive --> Finalized : on_shutdown
+    Active --> Finalized : on_shutdown
 ```
-Unconfigured → on_configure (加载站点、注册 BT) → Inactive
-Inactive → on_activate (创建 Action Server) → Active
-Active → on_deactivate (停止 BT) → Inactive
-```
+
+更细的生命周期启动时序与线程模型见 [docs/architecture.md](docs/architecture.md)。
 
 ## 构建与运行
 
