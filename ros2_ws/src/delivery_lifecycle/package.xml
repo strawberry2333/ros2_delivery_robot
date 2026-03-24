@@ -25,6 +25,10 @@
   <!-- 本包通过这些标准服务远程驱动其它 LifecycleNode 的 configure / activate。 -->
   <depend>lifecycle_msgs</depend>
 
+  <!-- 测试依赖 -->
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
   <!-- 导出构建类型声明，告知 colcon 使用 ament_cmake 进行构建 -->
   <export>
     <build_type>ament_cmake</build_type>

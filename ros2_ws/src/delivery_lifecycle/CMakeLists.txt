@@ -73,10 +73,10 @@ install(DIRECTORY include/ DESTINATION include)
 # ======================== 测试配置 ========================
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
-  # 跳过版权和代码风格检查（项目自定义风格）
-  # 当前阶段注释量较多，重点是保证逻辑可读性和启动编排正确性。
+  # 跳过版权、cpplint 和 uncrustify 检查（项目约定 4-space 缩进，与 ROS2 默认 2-space 冲突）
   set(ament_cmake_copyright_FOUND TRUE)
   set(ament_cmake_cpplint_FOUND TRUE)
+  set(ament_cmake_uncrustify_FOUND TRUE)
   # 自动发现并添加 lint 测试依赖
   ament_lint_auto_find_test_dependencies()
 endif()

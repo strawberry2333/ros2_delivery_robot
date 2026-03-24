@@ -66,5 +66,14 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 # 导出运行时依赖，使下游包在运行时能找到本包生成的接口类型支持。
 ament_export_dependencies(rosidl_default_runtime)
 
+# ---------------------------------------------------------------------------
+# 测试配置
+# ---------------------------------------------------------------------------
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  set(ament_cmake_copyright_FOUND TRUE)
+  ament_lint_auto_find_test_dependencies()
+endif()
+
 # ament 包注册，告诉构建系统这是一个标准 ament_cmake 接口包。
 ament_package()

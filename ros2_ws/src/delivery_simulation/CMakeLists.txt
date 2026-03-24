@@ -36,6 +36,16 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}
 )
 
+# ---------------------------------------------------------------------------
+# 测试配置
+# ---------------------------------------------------------------------------
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  set(ament_cmake_copyright_FOUND TRUE)
+  set(ament_cmake_cpplint_FOUND TRUE)
+  ament_lint_auto_find_test_dependencies()
+endif()
+
 # 生成 ament 包索引文件（package.xml 解析、环境钩子等），
 # 必须在 CMakeLists.txt 末尾调用，确保包能被 ros2 pkg 命令和 launch 系统发现
 ament_package()

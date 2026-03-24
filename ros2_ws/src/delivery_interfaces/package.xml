@@ -41,6 +41,10 @@
        其他节点在运行时反序列化本包消息时需要这个依赖。 -->
   <exec_depend>rosidl_default_runtime</exec_depend>
 
+  <!-- 测试依赖 -->
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
   <!-- 声明本包属于 rosidl 接口包组。
        这样 colcon 和 ament 工具能把它当作接口定义包处理。 -->
   <member_of_group>rosidl_interface_packages</member_of_group>

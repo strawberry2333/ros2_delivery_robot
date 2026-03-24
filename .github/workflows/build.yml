@@ -56,7 +56,20 @@ jobs:
           source /opt/ros/jazzy/setup.bash
           colcon build --event-handlers console_direct+ --symlink-install
 
-      - name: Test
+      - name: Lint (all packages)
+        working-directory: ros2_ws
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source install/setup.bash
+          colcon test --packages-select \
+            delivery_interfaces \
+            delivery_bringup \
+            delivery_simulation \
+            delivery_lifecycle \
+            --event-handlers console_direct+
+          colcon test-result --verbose
+
+      - name: Unit tests (delivery_core)
         working-directory: ros2_ws
         run: |
           source /opt/ros/jazzy/setup.bash

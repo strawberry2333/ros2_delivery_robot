@@ -54,6 +54,10 @@
   <!-- ROS 2 Launch ROS 扩展。 -->
   <exec_depend>launch_ros</exec_depend>
 
+  <!-- 测试依赖 -->
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
   <export>
     <!-- 声明构建类型为 ament_cmake，colcon 据此选择构建策略。 -->
     <build_type>ament_cmake</build_type>

@@ -22,5 +22,8 @@ __pycache__/
 # Claude Code
 .claude/
 
+# Factory Droid
+.factory/
+
 # Misc
 suggestions.md

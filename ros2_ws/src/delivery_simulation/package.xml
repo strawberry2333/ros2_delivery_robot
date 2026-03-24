@@ -22,6 +22,10 @@
        让 Nav2、AMCL 和调试工具能看到仿真中的真实状态。 -->
   <exec_depend>ros_gz_bridge</exec_depend>
 
+  <!-- 测试依赖 -->
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
   <!-- 声明构建类型为 ament_cmake，供 colcon 识别本包的构建方式 -->
   <export>
     <build_type>ament_cmake</build_type>

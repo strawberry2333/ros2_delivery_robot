@@ -28,6 +28,19 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}
 )
 
+# ---------------------------------------------------------------------------
+# 测试配置
+# ---------------------------------------------------------------------------
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  # 跳过与项目约定冲突的 linter：copyright、cpplint、pep257（中文 docstring）、flake8（launch 文件风格）
+  set(ament_cmake_copyright_FOUND TRUE)
+  set(ament_cmake_cpplint_FOUND TRUE)
+  set(ament_cmake_pep257_FOUND TRUE)
+  set(ament_cmake_flake8_FOUND TRUE)
+  ament_lint_auto_find_test_dependencies()
+endif()
+
 # 生成 ament 包索引文件，让 ros2 launch / colcon / ament_index 能发现本包资源。
-# 这是纯资源包的“收口”步骤，必须放在 CMakeLists.txt 末尾。
+# 这是纯资源包的"收口"步骤，必须放在 CMakeLists.txt 末尾。
 ament_package()
