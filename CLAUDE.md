@@ -136,3 +136,9 @@ ros2 service call /get_delivery_report delivery_interfaces/srv/GetDeliveryReport
 > 核心功能骨架已实现。低电量时直接中止当前配送（demo 级别，不恢复电量），仿真默认使用自定义仓库场景。
 
 详见 `plan/` 目录下的分阶段计划文档。
+
+## Agent Team PUA 配置
+
+所有 teammate 开工前必须加载 pua skill。
+teammate 失败 2 次以上时向 Leader 发送 `[PUA-REPORT]` 格式汇报。
+Leader 负责全局压力等级管理和跨 teammate 失败传递。

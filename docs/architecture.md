@@ -376,10 +376,10 @@ sequenceDiagram
 ```mermaid
 stateDiagram-v2
     [*] --> Unconfigured
-    Unconfigured --> Inactive : DeliveryExecutor::on_configure()\n加载站点 / 创建 helper node / 注册 BT 节点
-    Inactive --> Active : DeliveryExecutor::on_activate()\n等待 Nav2 active / 创建 ExecuteDelivery action server
-    Active --> Inactive : DeliveryExecutor::on_deactivate()\n停止 BT / 回收 action server
-    Inactive --> Unconfigured : DeliveryExecutor::on_cleanup()\n清理资源 / 注销 BT builder
+    Unconfigured --> Inactive : on_configure / 加载站点、创建 helper node、注册 BT 节点
+    Inactive --> Active : on_activate / 等待 Nav2 active、创建 ExecuteDelivery action server
+    Active --> Inactive : on_deactivate / 停止 BT、回收 action server
+    Inactive --> Unconfigured : on_cleanup / 清理资源、注销 BT builder
     Inactive --> Finalized : on_shutdown()
     Active --> Finalized : on_shutdown()
 ```
@@ -393,20 +393,20 @@ sequenceDiagram
     participant Executor as delivery_executor
     participant Manager as delivery_manager
 
-    Launch->>Executor: 启动节点进程
+    Launch->>Executor: 启动节点
     Launch->>LCM: 启动 lifecycle manager
     Launch->>Manager: 启动 manager
 
-    LCM->>Executor: wait_for_service(/change_state, /get_state)
-    LCM->>Executor: get_state()
-    LCM->>Executor: change_state(CONFIGURE)
+    LCM->>Executor: 等待 change_state 和 get_state 服务就绪
+    LCM->>Executor: 获取当前状态
+    LCM->>Executor: 请求 CONFIGURE 迁移
     Executor-->>LCM: Inactive
-    LCM->>LCM: sleep(transition_delay_sec)
-    LCM->>Executor: get_state()
-    LCM->>Executor: change_state(ACTIVATE)
+    LCM->>LCM: 等待 transition_delay_sec
+    LCM->>Executor: 再次获取当前状态
+    LCM->>Executor: 请求 ACTIVATE 迁移
     Executor-->>LCM: Active
 
-    Manager->>Executor: wait_for_action_server(execute_delivery)
+    Manager->>Executor: 等待 execute_delivery action server 就绪
     Manager->>Manager: system_ready = true
 ```
 
