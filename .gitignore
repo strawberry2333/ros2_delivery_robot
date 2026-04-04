@@ -27,3 +27,6 @@ __pycache__/
 
 # Misc
 suggestions.md
+
+# macOS
+.DS_Store
