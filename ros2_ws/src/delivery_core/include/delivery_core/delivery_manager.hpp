@@ -22,6 +22,7 @@
  */
 
 #include <deque>
+#include <cmath>
 #include <future>
 #include <mutex>
 #include <optional>
@@ -187,6 +188,15 @@ private:
     float progress{0.0f};             ///< 当前进度（由 executor feedback 同步）
     rclcpp::Time start_time;          ///< 订单开始执行的时间戳，用于性能统计
     rclcpp::Time end_time;            ///< 订单完成的时间戳，入库时记录
+  };
+
+  struct LoggedStatus
+  {
+    std::string order_id;
+    DeliveryState state{DeliveryState::kIdle};
+    std::string station;
+    float progress{0.0f};
+    std::string error_msg;
   };
 
     // ====== 配置加载 ======
@@ -432,6 +442,8 @@ private:
   std::string current_order_id_;                                               ///< 当前正在执行的订单 ID（空字符串表示无执行中订单）
   std::optional<OrderRecord> current_order_;                                   ///< 当前正在执行的订单记录（用于报告查询）
   std::mutex current_order_mutex_;                                             ///< 保护 current_order_id_ 和 current_order_ 的互斥锁
+  std::optional<LoggedStatus> last_logged_status_;                             ///< 上一次写入日志的状态快照，用于抑制重复日志
+  std::mutex status_log_mutex_;                                                ///< 保护 last_logged_status_ 的互斥锁
 
     // ====== 系统就绪标志 ======
   std::atomic<bool> system_ready_{false};   ///< run() 完成启动检查后置 true，服务回调据此拒绝过早的请求

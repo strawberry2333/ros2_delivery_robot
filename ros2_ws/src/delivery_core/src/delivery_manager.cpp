@@ -925,10 +925,29 @@ void DeliveryManager::publish_status(
   msg.error_msg = error;
   status_pub_->publish(msg);
 
-    // 日志输出：进度以百分比显示，更直观。
-  RCLCPP_INFO(get_logger(), "状态更新 [%s]: %s (站点: %s, 进度: %.0f%%)",
-                order_id.c_str(), state_to_string(state).c_str(),
-                station.c_str(), progress * 100.0f);
+  // Action feedback 会高频重复同一状态；这里只在状态快照真正变化时写日志，
+  // 避免 manager 在 100Hz tick 下刷屏，同时保留 /delivery_status 的实时发布。
+  bool should_log = false;
+  {
+    std::lock_guard<std::mutex> lock(status_log_mutex_);
+    const bool same_as_last = last_logged_status_.has_value() &&
+      last_logged_status_->order_id == order_id &&
+      last_logged_status_->state == state &&
+      last_logged_status_->station == station &&
+      std::fabs(last_logged_status_->progress - progress) < 1e-4f &&
+      last_logged_status_->error_msg == error;
+
+    if (!same_as_last) {
+      last_logged_status_ = LoggedStatus{order_id, state, station, progress, error};
+      should_log = true;
+    }
+  }
+
+  if (should_log) {
+    RCLCPP_INFO(get_logger(), "状态更新 [%s]: %s (站点: %s, 进度: %.0f%%)",
+      order_id.c_str(), state_to_string(state).c_str(),
+      station.c_str(), progress * 100.0f);
+  }
 }
 
 /**
