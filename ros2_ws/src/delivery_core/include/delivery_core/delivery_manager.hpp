@@ -76,6 +76,10 @@ public:
   using StationInfo = delivery_interfaces::msg::StationInfo;               ///< 站点信息消息
   using ExecuteDelivery = delivery_interfaces::action::ExecuteDelivery;    ///< 配送执行 Action 类型
   using ExecuteDeliveryGoalHandle = rclcpp_action::ClientGoalHandle<ExecuteDelivery>;   ///< 配送 Action Goal 句柄
+  using GoalResultFuture = std::shared_future<ExecuteDeliveryGoalHandle::WrappedResult>;  ///< 配送 Action 结果 future 类型别名
+  using SubmitOrderSrv = delivery_interfaces::srv::SubmitOrder;         ///< 提交订单服务类型
+  using CancelOrderSrv = delivery_interfaces::srv::CancelOrder;         ///< 取消订单服务类型
+  using GetDeliveryReportSrv = delivery_interfaces::srv::GetDeliveryReport;  ///< 获取配送报告服务类型
 
     /**
      * @brief 构造函数，初始化所有参数、通信接口和回调组。
@@ -324,7 +328,7 @@ private:
      */
   bool wait_for_terminal_result_after_cancel(
     const std::string & order_id,
-    const std::shared_future<ExecuteDeliveryGoalHandle::WrappedResult> & result_future);
+    const GoalResultFuture & result_future);
 
     /**
      * @brief 等待 /execute_delivery Action Server 可用。
@@ -355,8 +359,8 @@ private:
      * @param[out] response accepted=true 表示接受，否则 reason 字段含拒绝原因。
      */
   void handle_submit_order(
-    const std::shared_ptr<delivery_interfaces::srv::SubmitOrder::Request> request,
-    std::shared_ptr<delivery_interfaces::srv::SubmitOrder::Response> response);
+    const std::shared_ptr<SubmitOrderSrv::Request> request,
+    std::shared_ptr<SubmitOrderSrv::Response> response);
 
     /**
      * @brief CancelOrder 服务回调：取消队列中尚未执行的订单。
@@ -369,8 +373,8 @@ private:
      * @param[out] response success=true 表示成功取消，否则 reason 字段含失败原因。
      */
   void handle_cancel_order(
-    const std::shared_ptr<delivery_interfaces::srv::CancelOrder::Request> request,
-    std::shared_ptr<delivery_interfaces::srv::CancelOrder::Response> response);
+    const std::shared_ptr<CancelOrderSrv::Request> request,
+    std::shared_ptr<CancelOrderSrv::Response> response);
 
     /**
      * @brief GetDeliveryReport 服务回调：查询所有订单的配送状态报告。
@@ -382,8 +386,8 @@ private:
      * @param[out] response reports 字段包含所有订单的 DeliveryStatus 列表。
      */
   void handle_get_report(
-    const std::shared_ptr<delivery_interfaces::srv::GetDeliveryReport::Request> request,
-    std::shared_ptr<delivery_interfaces::srv::GetDeliveryReport::Response> response);
+    const std::shared_ptr<GetDeliveryReportSrv::Request> request,
+    std::shared_ptr<GetDeliveryReportSrv::Response> response);
 
     // ====== ROS 参数 ======
   std::string map_frame_;                       ///< 地图坐标系名称，默认 "map"，所有导航目标点都在此坐标系下
@@ -414,9 +418,9 @@ private:
   rclcpp::Publisher<PoseWithCovarianceStamped>::SharedPtr initial_pose_pub_;   ///< 初始位姿发布器，发布到 /initialpose 供 AMCL 使用
 
     // ====== 服务端 ======
-  rclcpp::Service<delivery_interfaces::srv::SubmitOrder>::SharedPtr submit_order_srv_;        ///< 订单提交服务端 (/submit_order)
-  rclcpp::Service<delivery_interfaces::srv::CancelOrder>::SharedPtr cancel_order_srv_;        ///< 订单取消服务端 (/cancel_order)
-  rclcpp::Service<delivery_interfaces::srv::GetDeliveryReport>::SharedPtr get_report_srv_;    ///< 配送报告查询服务端 (/get_delivery_report)
+  rclcpp::Service<SubmitOrderSrv>::SharedPtr submit_order_srv_;           ///< 订单提交服务端 (/submit_order)
+  rclcpp::Service<CancelOrderSrv>::SharedPtr cancel_order_srv_;           ///< 订单取消服务端 (/cancel_order)
+  rclcpp::Service<GetDeliveryReportSrv>::SharedPtr get_report_srv_;       ///< 配送报告查询服务端 (/get_delivery_report)
 
     // ====== 配送执行 Action Client ======
   rclcpp_action::Client<ExecuteDelivery>::SharedPtr delivery_action_client_;   ///< ExecuteDelivery Action Client，调用 executor

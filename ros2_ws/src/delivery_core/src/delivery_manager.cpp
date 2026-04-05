@@ -101,19 +101,19 @@ DeliveryManager::DeliveryManager(const rclcpp::NodeOptions & options)
     // === 创建服务端 ===
     // 这些服务对应“接单、取消、查询”三个最核心的 manager 对外接口。
     // 绑定到专用回调组后，回调能和主循环并发运行。
-  submit_order_srv_ = this->create_service<delivery_interfaces::srv::SubmitOrder>(
+  submit_order_srv_ = this->create_service<SubmitOrderSrv>(
         "submit_order",
         std::bind(&DeliveryManager::handle_submit_order, this,
                   std::placeholders::_1, std::placeholders::_2),
         rclcpp::ServicesQoS(), service_cb_group_);
 
-  cancel_order_srv_ = this->create_service<delivery_interfaces::srv::CancelOrder>(
+  cancel_order_srv_ = this->create_service<CancelOrderSrv>(
         "cancel_order",
         std::bind(&DeliveryManager::handle_cancel_order, this,
                   std::placeholders::_1, std::placeholders::_2),
         rclcpp::ServicesQoS(), service_cb_group_);
 
-  get_report_srv_ = this->create_service<delivery_interfaces::srv::GetDeliveryReport>(
+  get_report_srv_ = this->create_service<GetDeliveryReportSrv>(
         "get_delivery_report",
         std::bind(&DeliveryManager::handle_get_report, this,
                   std::placeholders::_1, std::placeholders::_2),
@@ -441,7 +441,7 @@ bool DeliveryManager::wait_for_executor_server()
 
 bool DeliveryManager::wait_for_terminal_result_after_cancel(
   const std::string & order_id,
-  const std::shared_future<ExecuteDeliveryGoalHandle::WrappedResult> & result_future)
+  const GoalResultFuture & result_future)
 {
   // 取消请求发出后，executor 可能仍在收尾，这里给它一个短等待窗口。
   const std::chrono::duration<double> timeout(cancel_completion_wait_timeout_sec_);
@@ -471,8 +471,8 @@ bool DeliveryManager::wait_for_terminal_result_after_cancel(
  * 该回调是系统对外接单入口，因此所有失败都应尽早返回，避免非法订单进入后续执行链路。
  */
 void DeliveryManager::handle_submit_order(
-  const std::shared_ptr<delivery_interfaces::srv::SubmitOrder::Request> request,
-  std::shared_ptr<delivery_interfaces::srv::SubmitOrder::Response> response)
+  const std::shared_ptr<SubmitOrderSrv::Request> request,
+  std::shared_ptr<SubmitOrderSrv::Response> response)
 {
   const auto & order = request->order;
 
@@ -594,8 +594,8 @@ void DeliveryManager::handle_submit_order(
  * 前者直接从队列删除，后者通过 action cancel 转发给 executor。
  */
 void DeliveryManager::handle_cancel_order(
-  const std::shared_ptr<delivery_interfaces::srv::CancelOrder::Request> request,
-  std::shared_ptr<delivery_interfaces::srv::CancelOrder::Response> response)
+  const std::shared_ptr<CancelOrderSrv::Request> request,
+  std::shared_ptr<CancelOrderSrv::Response> response)
 {
   std::lock_guard<std::mutex> lock(queue_mutex_);
 
@@ -636,8 +636,8 @@ void DeliveryManager::handle_cancel_order(
  * 这相当于 manager 对外提供的一份“订单全生命周期快照”。
  */
 void DeliveryManager::handle_get_report(
-  const std::shared_ptr<delivery_interfaces::srv::GetDeliveryReport::Request>,
-  std::shared_ptr<delivery_interfaces::srv::GetDeliveryReport::Response> response)
+  const std::shared_ptr<GetDeliveryReportSrv::Request>,
+  std::shared_ptr<GetDeliveryReportSrv::Response> response)
 {
   std::lock_guard<std::mutex> lock(queue_mutex_);
 
