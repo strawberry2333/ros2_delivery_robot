@@ -49,8 +49,10 @@ BT::NodeStatus NavigateToStation::onStart()
   const auto & pose = it->second.pose;
 
   // 将仓库站点位姿转换成 Nav2 可消费的目标。
+  std::string map_frame = "map";
+  getInput("map_frame", map_frame);
   NavigateToPose::Goal goal_msg;
-  goal_msg.pose.header.frame_id = "map";
+  goal_msg.pose.header.frame_id = map_frame;
   goal_msg.pose.header.stamp = node_->now();
   goal_msg.pose.pose.position.x = pose.x;
   goal_msg.pose.pose.position.y = pose.y;

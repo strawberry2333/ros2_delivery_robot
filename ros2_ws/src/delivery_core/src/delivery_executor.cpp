@@ -46,6 +46,9 @@ DeliveryExecutor::DeliveryExecutor()
   tree_file_path_ = this->declare_parameter<std::string>("tree_file", "");
   battery_drain_per_delivery_ = this->declare_parameter<double>(
     "battery_drain_per_delivery", 15.0);
+  nav2_action_name_ = this->declare_parameter<std::string>(
+    "nav2_action_name", "navigate_to_pose");
+  battery_threshold_ = this->declare_parameter<double>("battery_threshold", 20.0);
 
   RCLCPP_INFO(get_logger(), "DeliveryExecutor 已创建 (Unconfigured)");
 }
@@ -89,7 +92,7 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_configure(
   // Nav2 导航是 BT 的核心外部依赖。
   // 这里用辅助节点创建 action client，确保导航请求和 action 回调都能正常处理。
   nav_client_ = rclcpp_action::create_client<NavigateToPose>(
-    bt_node_, "navigate_to_pose");
+    bt_node_, nav2_action_name_);
 
   // 辅助节点本身也需要 spin，否则 action client 的异步回调无法被处理。
   // 单独开线程可以避免把 BT 执行和回调处理绑死在同一个执行上下文里。
@@ -554,6 +557,7 @@ void DeliveryExecutor::execute_bt(
   tree.rootBlackboard()->set("dropoff_station", order.dropoff_station);
   tree.rootBlackboard()->set("stations", stations_);
   tree.rootBlackboard()->set("battery_level", battery_level_.load());
+  tree.rootBlackboard()->set("battery_threshold", battery_threshold_);
 
   // 初始状态由 manager 通过 action feedback 对外发布，executor 不再直接发布。
 
@@ -673,7 +677,7 @@ void DeliveryExecutor::execute_bt(
     result->success = false;
     double current_battery = battery_level_.load();
     // 失败原因区分“电量不足”与“BT 逻辑失败”，便于排查是系统约束还是流程错误。
-    if (current_battery < 20.0) {
+    if (current_battery < battery_threshold_) {
       result->error_msg = "电量不足 (" +
         std::to_string(static_cast<int>(current_battery)) + "%)，配送中止";
     } else {

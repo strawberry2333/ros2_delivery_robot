@@ -534,8 +534,15 @@ void DeliveryManager::handle_submit_order(
     return;
   }
 
+  // 验证优先级值在合法范围内（0=NORMAL, 1=HIGH, 2=URGENT）。
+  if (order.priority > DeliveryOrder::PRIORITY_URGENT) {
+    response->accepted = false;
+    response->reason = "优先级值非法: " + std::to_string(order.priority) +
+      " (有效范围: 0-" + std::to_string(DeliveryOrder::PRIORITY_URGENT) + ")";
+    return;
+  }
+
     // 构造订单记录。
-    // 这里先创建 record，再在队列中插入，便于后续共享相同的记录结构。
   OrderRecord record;
   record.order = order;
   record.state = DeliveryState::kIdle;

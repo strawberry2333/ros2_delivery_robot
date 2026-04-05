@@ -73,8 +73,10 @@ public:
 
   static BT::PortsList providedPorts()
   {
-    // 站点 ID 是控制导航目标的核心输入，缺失时节点无法继续。
-    return {BT::InputPort<std::string>("station_id", "目标站点 ID")};
+    return {
+      BT::InputPort<std::string>("station_id", "目标站点 ID"),
+      BT::InputPort<std::string>("map_frame", "map", "导航目标坐标系"),
+    };
   }
 
   /**

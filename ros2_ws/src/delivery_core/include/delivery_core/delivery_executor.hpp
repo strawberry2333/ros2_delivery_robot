@@ -235,8 +235,12 @@ private:
   std::string station_config_path_;
   /// BT XML 文件路径，决定单次配送流程如何被编排。
   std::string tree_file_path_;
+  /// Nav2 导航 action server 名称，对应 launch/yaml 中的 nav2_action_name。
+  std::string nav2_action_name_{"navigate_to_pose"};
   /// 每单完成后扣减的模拟电量，demo 级别参数。
   double battery_drain_per_delivery_{15.0};
+  /// 电量最低阈值（百分比），低于此值拒绝配送。与 BT XML 中 CheckBattery 保持同步。
+  double battery_threshold_{20.0};
 
   // ====== 电池模拟 ======
   /// 当前电量百分比，BT 执行线程和 cleanup 都可能读写，因此使用原子变量。

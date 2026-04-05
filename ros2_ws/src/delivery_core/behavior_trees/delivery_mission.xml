@@ -18,7 +18,7 @@
   <BehaviorTree ID="DeliveryMission">
     <Sequence>
       <!-- 电量前置检查：不足时 FAILURE，executor 中止配送 -->
-      <CheckBattery threshold="20.0" />
+      <CheckBattery threshold="{battery_threshold}" />
 
       <!-- 执行配送子树 -->
       <SubTree ID="SingleDelivery"

@@ -216,7 +216,7 @@ TEST_F(DeliveryManagerServiceTest, GetDeliveryReportReturnsQueuedOrders)
 TEST_F(DeliveryManagerServiceTest, PriorityOrdering)
 {
   submit_order("order_low", "station_A", "station_C", 0);
-  submit_order("order_high", "station_B", "station_C", 10);
+  submit_order("order_high", "station_B", "station_C", 2);
 
   auto request = std::make_shared<delivery_interfaces::srv::GetDeliveryReport::Request>();
   auto future = report_client_->async_send_request(request);
