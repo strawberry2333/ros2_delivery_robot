@@ -16,6 +16,7 @@
  * 参考 Ros2Learning/move_base_node.cpp 的 StatefulActionNode 模式。
  */
 
+#include <atomic>
 #include <string>
 #include <unordered_map>
 
@@ -106,7 +107,7 @@ private:
 
   GoalHandle::SharedPtr goal_handle_;
   std::shared_future<GoalHandle::WrappedResult> result_future_;
-  bool result_ready_{false};
+  std::atomic<bool> result_ready_{false};
 };
 
 }  // namespace delivery_core

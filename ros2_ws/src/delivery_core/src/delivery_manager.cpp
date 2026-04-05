@@ -293,8 +293,9 @@ bool DeliveryManager::execute_delivery(OrderRecord & record)
 
     // Feedback 回调：将 executor 的实时状态同步到 current_order_。
     // 这样 GetDeliveryReport 返回的不是静态“队列快照”，而是包含在途订单的实时状态。
+  const std::string order_id = order.order_id;
   send_goal_options.feedback_callback =
-    [this, &record](ExecuteDeliveryGoalHandle::SharedPtr,
+    [this, order_id](ExecuteDeliveryGoalHandle::SharedPtr,
     const std::shared_ptr<const ExecuteDelivery::Feedback> feedback)
     {
         // 将 msg 常量映射回内部枚举。
@@ -313,16 +314,19 @@ bool DeliveryManager::execute_delivery(OrderRecord & record)
         default: return;
       }
 
-      record.state = new_state;
-      record.current_station = feedback->current_station;
-      record.progress = feedback->progress;
-      // current_order_ 是服务回调读取的共享状态，因此必须在 mutex 保护下更新。
-      std::lock_guard<std::mutex> lock(current_order_mutex_);
-      if (current_order_.has_value()) {
-        current_order_->state = new_state;
-        current_order_->current_station = feedback->current_station;
-        current_order_->progress = feedback->progress;
+      // 更新 mutex 保护的共享状态，不写局部 record 变量（避免跨线程数据竞争）。
+      {
+        std::lock_guard<std::mutex> lock(current_order_mutex_);
+        if (current_order_.has_value()) {
+          current_order_->state = new_state;
+          current_order_->current_station = feedback->current_station;
+          current_order_->progress = feedback->progress;
+        }
       }
+
+      // manager 是 /delivery_status 的唯一对外发布者，实时转发 executor 反馈的中间态。
+      publish_status(order_id, new_state,
+        feedback->current_station, feedback->progress);
     };
 
     // 发送 Goal。
@@ -397,8 +401,9 @@ bool DeliveryManager::execute_delivery(OrderRecord & record)
   if (wrapped_result.code == rclcpp_action::ResultCode::SUCCEEDED &&
     wrapped_result.result->success)
   {
-    // executor 正常完成任务，manager 只记录成功和耗时，不再额外重复状态发布。
     record.state = DeliveryState::kComplete;
+    publish_status(order.order_id, DeliveryState::kComplete,
+      order.dropoff_station, 1.0f);
     RCLCPP_INFO(get_logger(), "订单 [%s] 由 executor 完成，耗时 %.1f 秒",
                     order.order_id.c_str(),
                     wrapped_result.result->elapsed_time_sec);

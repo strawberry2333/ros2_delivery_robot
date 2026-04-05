@@ -255,6 +255,9 @@ private:
   std::atomic<bool> load_confirmed_{false};
   /// 由 /confirm_unload 服务置位，供 WaitForConfirmation 节点读取。
   std::atomic<bool> unload_confirmed_{false};
+  /// 当前执行阶段：0=无, 1=等待装货确认, 2=等待卸货确认。
+  /// 服务回调据此拒绝不在对应阶段的过早/错误确认。
+  std::atomic<uint8_t> current_phase_{0};
 
   // ====== 执行状态 ======
   /// 标记当前是否已有已接受但未结束的 goal，避免 handle_goal / handle_accepted 的竞态窗口。
@@ -285,8 +288,6 @@ private:
   rclcpp_action::Server<ExecuteDelivery>::SharedPtr action_server_;
   /// 指向 Nav2 navigate_to_pose 的 action client。
   rclcpp_action::Client<NavigateToPose>::SharedPtr nav_client_;
-  /// 统一发布配送状态，供 manager 和外部监控订阅。
-  rclcpp::Publisher<DeliveryStatus>::SharedPtr status_pub_;
   /// 停靠节点使用的速度话题发布器。
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub_;
 

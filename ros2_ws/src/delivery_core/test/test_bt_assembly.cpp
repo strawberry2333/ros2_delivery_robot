@@ -43,7 +43,6 @@ protected:
     node_ = rclcpp::Node::make_shared("bt_assembly_test_node");
 
     // 先准备 BT 节点构造时依赖的 ROS 句柄。
-    auto status_pub = node_->create_publisher<DeliveryStatus>("delivery_status", 10);
     auto cmd_vel_pub = node_->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
     auto nav_client = rclcpp_action::create_client<nav2_msgs::action::NavigateToPose>(
       node_, "navigate_to_pose");
@@ -70,8 +69,8 @@ protected:
 
     factory_.registerBuilder<ReportDeliveryStatus>(
       "ReportDeliveryStatus",
-      [node = node_, status_pub](const std::string & name, const BT::NodeConfig & config) {
-        return std::make_unique<ReportDeliveryStatus>(name, config, node, status_pub);
+      [node = node_](const std::string & name, const BT::NodeConfig & config) {
+        return std::make_unique<ReportDeliveryStatus>(name, config, node);
       });
 
     factory_.registerNodeType<CheckBattery>("CheckBattery");

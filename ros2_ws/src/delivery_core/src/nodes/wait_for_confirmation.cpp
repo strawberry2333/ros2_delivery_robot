@@ -38,6 +38,14 @@ BT::NodeStatus WaitForConfirmation::onStart()
     return BT::NodeStatus::FAILURE;
   }
 
+  // confirm_type 必须为 "load" 或 "unload"，拒绝拼写错误静默降级到 unload 分支。
+  if (confirm_type_ != "load" && confirm_type_ != "unload") {
+    RCLCPP_ERROR(node_->get_logger(),
+      "WaitForConfirmation: confirm_type 非法 [%s]，必须为 \"load\" 或 \"unload\"",
+      confirm_type_.c_str());
+    return BT::NodeStatus::FAILURE;
+  }
+
   // 超时时长由 XML 配置，默认 60 秒。
   getInput("timeout_sec", timeout_sec_);
 

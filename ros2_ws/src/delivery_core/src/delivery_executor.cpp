@@ -99,16 +99,22 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_configure(
         bt_node_executor_->spin();
       });
 
-  // 状态话题用于向 manager / 外部监控暴露执行进度。
-  status_pub_ = this->create_publisher<DeliveryStatus>("delivery_status", 10);
+  // 状态对外发布由 delivery_manager 统一负责（通过 action feedback），
+  // executor 不再直接向 /delivery_status 发布，避免双源冲突。
   // 停靠节点会通过速度话题对机器人做微调运动。
   cmd_vel_pub_ = this->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
 
-  // 装货确认服务：人或上位机调用后，把 load_confirmed_ 置位。
+  // 装货确认服务：仅在等待装货阶段接受确认，防止过早/错误确认导致假成功。
   confirm_load_srv_ = this->create_service<std_srvs::srv::Trigger>(
     "confirm_load",
     [this](const std::shared_ptr<std_srvs::srv::Trigger::Request>,
     std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+      if (current_phase_.load(std::memory_order_acquire) != 1) {
+        response->success = false;
+        response->message = "当前不在等待装货阶段，确认被忽略";
+        RCLCPP_WARN(get_logger(), "收到装货确认信号，但当前不在等待装货阶段");
+        return;
+      }
       load_confirmed_.store(true, std::memory_order_release);
       response->success = true;
       response->message = "装货确认已接收";
@@ -116,11 +122,17 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_configure(
     },
     rclcpp::ServicesQoS(), service_cb_group_);
 
-  // 卸货确认服务：与装货确认同理，但对应订单后半段的人工确认。
+  // 卸货确认服务：仅在等待卸货阶段接受确认。
   confirm_unload_srv_ = this->create_service<std_srvs::srv::Trigger>(
     "confirm_unload",
     [this](const std::shared_ptr<std_srvs::srv::Trigger::Request>,
     std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+      if (current_phase_.load(std::memory_order_acquire) != 2) {
+        response->success = false;
+        response->message = "当前不在等待卸货阶段，确认被忽略";
+        RCLCPP_WARN(get_logger(), "收到卸货确认信号，但当前不在等待卸货阶段");
+        return;
+      }
       unload_confirmed_.store(true, std::memory_order_release);
       response->success = true;
       response->message = "卸货确认已接收";
@@ -204,7 +216,6 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_cleanup(
   stations_.clear();
   bt_node_.reset();
   nav_client_.reset();
-  status_pub_.reset();
   cmd_vel_pub_.reset();
   confirm_load_srv_.reset();
   confirm_unload_srv_.reset();
@@ -415,12 +426,12 @@ void DeliveryExecutor::register_bt_nodes()
                 name, config, node_ptr, &load_confirmed_, &unload_confirmed_);
         });
 
-    // ReportDeliveryStatus：统一更新状态话题和黑板上的执行进度。
+    // ReportDeliveryStatus：更新黑板上的执行进度（对外状态由 manager 发布）。
   factory_.registerBuilder<ReportDeliveryStatus>(
         "ReportDeliveryStatus",
-    [node_ptr, this](const std::string & name, const BT::NodeConfig & config) {
+    [node_ptr](const std::string & name, const BT::NodeConfig & config) {
       return std::make_unique<ReportDeliveryStatus>(
-                name, config, node_ptr, status_pub_);
+                name, config, node_ptr);
         });
 
     // CheckBattery：在任务开始前读取黑板中的电量，决定是否允许继续配送。
@@ -503,6 +514,7 @@ void DeliveryExecutor::execute_bt(
       // 收尾动作统一放在 lambda 中，避免在多个 return 分支里重复写一致的清理逻辑。
       executing_.store(false, std::memory_order_release);
       goal_inflight_.store(false, std::memory_order_release);
+      current_phase_.store(0, std::memory_order_release);
       clear_active_goal(goal_handle);
     };
 
@@ -543,17 +555,7 @@ void DeliveryExecutor::execute_bt(
   tree.rootBlackboard()->set("stations", stations_);
   tree.rootBlackboard()->set("battery_level", battery_level_.load());
 
-  // 在真正进入 tick 之前，先向外发布一个“已开始前往取货点”的状态，
-  // 这样 manager 和监控端不会在执行初期看到空白。
-  {
-    DeliveryStatus status_msg;
-    status_msg.stamp = this->now();
-    status_msg.order_id = order.order_id;
-    status_msg.state = DeliveryStatus::STATE_GOING_TO_PICKUP;
-    status_msg.current_station = order.pickup_station;
-    status_msg.progress = 0.1f;
-    status_pub_->publish(status_msg);
-  }
+  // 初始状态由 manager 通过 action feedback 对外发布，executor 不再直接发布。
 
   // BT tick 循环是整个执行过程的主驱动器。
   // 每次 tick 都可能推进状态、发起导航、等待确认或结束任务。
@@ -610,6 +612,16 @@ void DeliveryExecutor::execute_bt(
     unsigned bt_state = DeliveryStatus::STATE_GOING_TO_PICKUP;
     (void)bb->get("bt_state", bt_state);
     feedback->state = static_cast<uint8_t>(bt_state);
+
+    // 根据 BT 状态同步确认阶段标志，使 confirm_load/unload 服务能做阶段感知。
+    if (bt_state == DeliveryStatus::STATE_WAITING_LOAD) {
+      current_phase_.store(1, std::memory_order_release);
+    } else if (bt_state == DeliveryStatus::STATE_WAITING_UNLOAD) {
+      current_phase_.store(2, std::memory_order_release);
+    } else {
+      current_phase_.store(0, std::memory_order_release);
+    }
+
     std::string bt_station;
     (void)bb->get("bt_station", bt_station);
     feedback->current_station = bt_station;
@@ -670,13 +682,7 @@ void DeliveryExecutor::execute_bt(
     RCLCPP_WARN(get_logger(), "配送失败 [%s]: %s",
       order.order_id.c_str(), result->error_msg.c_str());
 
-    // 将失败同步到状态话题，让 manager / 监控端能直接看到终态。
-    DeliveryStatus fail_msg;
-    fail_msg.stamp = this->now();
-    fail_msg.order_id = order.order_id;
-    fail_msg.state = DeliveryStatus::STATE_FAILED;
-    fail_msg.error_msg = result->error_msg;
-    status_pub_->publish(fail_msg);
+    // 失败终态由 manager 通过 action result 接收后统一发布到 /delivery_status。
 
     if (goal_handle->is_active()) {
       try {

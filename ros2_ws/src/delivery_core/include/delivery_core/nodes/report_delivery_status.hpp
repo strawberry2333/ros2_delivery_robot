@@ -2,15 +2,15 @@
 
 /**
  * @file report_delivery_status.hpp
- * @brief BT 叶节点：发布配送状态消息。
+ * @brief BT 叶节点：同步配送状态到黑板。
  *
- * 这个节点通常出现在行为树的阶段切换点，用来把当前订单进度显式同步到
- * `DeliveryStatus` 话题和黑板。外部监控、`delivery_manager` 的反馈同步、
- * 以及日志排查都依赖这个状态输出。
+ * 这个节点出现在行为树的阶段切换点，把当前订单进度写入黑板。
+ * executor 的 tick 循环读取黑板后通过 action feedback 转发给 manager，
+ * manager 作为唯一对外发布者将状态发布到 /delivery_status 话题。
  *
  * 业务语义：
- * - `SUCCESS`：状态已成功发布，行为树可以继续
- * - `FAILURE`：必要端口缺失，当前状态无法对外同步
+ * - `SUCCESS`：状态已写入黑板，行为树可以继续
+ * - `FAILURE`：必要端口缺失，当前状态无法同步
  */
 
 #include <string>
@@ -23,7 +23,7 @@ namespace delivery_core
 {
 
 /**
- * @brief 发布配送状态的 BT 叶节点（SyncActionNode）
+ * @brief 同步配送状态到黑板的 BT 叶节点（SyncActionNode）
  *
  * 输入端口：
  * - order_id: 订单 ID
@@ -36,7 +36,7 @@ namespace delivery_core
  * - bt_station: 写回黑板的当前站点
  * - bt_progress: 写回黑板的当前进度
  *
- * 这个节点是同步动作节点，因为它只做消息构造和发布，不需要等待外部结果。
+ * 同步动作节点，只做黑板写入，不需要等待外部结果。
  */
 class ReportDeliveryStatus : public BT::SyncActionNode
 {
@@ -46,8 +46,7 @@ public:
   ReportDeliveryStatus(
     const std::string & name,
     const BT::NodeConfig & config,
-    rclcpp::Node::SharedPtr node,
-    rclcpp::Publisher<DeliveryStatus>::SharedPtr status_pub);
+    rclcpp::Node::SharedPtr node);
 
   static BT::PortsList providedPorts()
   {
@@ -65,16 +64,12 @@ public:
   }
 
   /**
-   * @brief 构造并发布状态消息，同时把关键字段写回黑板。
-   *
-   * 这是“状态同步节点”，不是纯日志节点。它既要把状态发到话题上，也要
-   * 保证黑板中有可供上层读取的最新状态，便于 action feedback 和报告汇总。
+   * @brief 将关键字段写回黑板，供 executor 通过 action feedback 转发。
    */
   BT::NodeStatus tick() override;
 
 private:
   rclcpp::Node::SharedPtr node_;
-  rclcpp::Publisher<DeliveryStatus>::SharedPtr status_pub_;
 };
 
 }  // namespace delivery_core
