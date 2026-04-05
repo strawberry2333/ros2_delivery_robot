@@ -92,8 +92,12 @@ WS_DIR="$(cd "$SCRIPT_DIR/../ros2_ws" && pwd)"
 
 # 环境准备
 # source 会在“当前 shell”里执行脚本，常用于加载环境变量。
+# ROS setup 脚本内部会读取某些未定义变量；这里临时关闭 nounset，
+# 避免 set -u 让冒烟脚本在环境初始化前就退出。
+set +u
 source /opt/ros/jazzy/setup.bash
 source "$WS_DIR/install/setup.bash"
+set -u
 export TURTLEBOT3_MODEL=waffle_pi
 
 # 启动前先清理旧进程，避免 /clock 多 publisher 污染
@@ -123,12 +127,13 @@ while ! ros2 service list 2>/dev/null | grep -q "$SRV_SUBMIT_ORDER"; do
 done
 echo "[smoke] $SRV_SUBMIT_ORDER 可用 (${SECONDS}s)"
 
-# 等待 /delivery_status topic 有 2 个 publisher（delivery_manager + delivery_executor 都就绪）
+# 等待 /delivery_status topic 有至少 1 个 publisher。
+# 2026-04-05 起状态统一由 delivery_manager 对外发布，不再依赖双发布源。
 echo "[smoke] 等待配送节点就绪..."
 SECONDS=0
-while ! ros2 topic info "$TOPIC_DELIVERY_STATUS" 2>/dev/null | grep -q "Publisher count: [2-9]"; do
+while ! ros2 topic info "$TOPIC_DELIVERY_STATUS" 2>/dev/null | grep -q "Publisher count: [1-9]"; do
   if (( SECONDS > 60 )); then
-    echo "[smoke] WARN: 等待 /delivery_status 双 publisher 超时，继续执行"
+    echo "[smoke] WARN: 等待 /delivery_status publisher 超时，继续执行"
     break
   fi
   sleep "$POLL_INTERVAL"
