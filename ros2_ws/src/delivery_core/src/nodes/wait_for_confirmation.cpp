@@ -46,12 +46,19 @@ BT::NodeStatus WaitForConfirmation::onStart()
     return BT::NodeStatus::FAILURE;
   }
 
+  // 空指针防御：确认标志由 executor 注入，若为空说明接线错误。
+  std::atomic<bool> * flag_ptr = (confirm_type_ == "load") ? load_flag_ : unload_flag_;
+  if (flag_ptr == nullptr) {
+    RCLCPP_ERROR(node_->get_logger(),
+      "WaitForConfirmation: %s 确认标志指针为空", confirm_type_.c_str());
+    return BT::NodeStatus::FAILURE;
+  }
+
   // 超时时长由 XML 配置，默认 60 秒。
   getInput("timeout_sec", timeout_sec_);
 
   // 进入等待态前先清掉旧标志，避免上一单的确认残留到当前单。
-  std::atomic<bool> & flag =
-    (confirm_type_ == "load") ? *load_flag_ : *unload_flag_;
+  std::atomic<bool> & flag = *flag_ptr;
   flag.store(false, std::memory_order_release);
 
   // 记录开始等待的时间点，用于后续超时判断。
@@ -71,9 +78,13 @@ BT::NodeStatus WaitForConfirmation::onStart()
 
 BT::NodeStatus WaitForConfirmation::onRunning()
 {
-  // 根据当前 confirm_type 选择对应的确认标志。
-  std::atomic<bool> & flag =
-    (confirm_type_ == "load") ? *load_flag_ : *unload_flag_;
+  std::atomic<bool> * flag_ptr = (confirm_type_ == "load") ? load_flag_ : unload_flag_;
+  if (flag_ptr == nullptr) {
+    RCLCPP_ERROR(node_->get_logger(),
+      "WaitForConfirmation: 确认标志指针为空");
+    return BT::NodeStatus::FAILURE;
+  }
+  std::atomic<bool> & flag = *flag_ptr;
 
   // 收到人工确认后，当前阶段结束，可以继续后续动作。
   if (flag.load(std::memory_order_acquire)) {

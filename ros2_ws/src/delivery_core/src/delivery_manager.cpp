@@ -233,10 +233,17 @@ void DeliveryManager::run()
       // 这里真正的业务执行被委托给 executor，manager 只等待结果并更新历史记录。
       bool success = execute_delivery(current_order);
 
-            // 清除当前订单追踪。
-      // 这样后续 cancel/report 不会把一个已经结束的订单当成“当前执行中”。
+            // 从 current_order_ 同步导航进度到局部变量，再清除追踪。
+      // feedback 回调通过 current_order_ 更新了 current_station/progress，
+      // 局部 current_order 缺少这些数据，入库前必须同步。
+      // 注意：不同步 state——终态（kComplete/kFailed/kCanceled）由 execute_delivery
+      // 直接写入局部变量，feedback 中间态不应覆盖终态。
       {
         std::lock_guard<std::mutex> lock(current_order_mutex_);
+        if (current_order_.has_value()) {
+          current_order.current_station = current_order_->current_station;
+          current_order.progress = current_order_->progress;
+        }
         current_order_id_.clear();
         current_order_.reset();
       }
@@ -245,6 +252,7 @@ void DeliveryManager::run()
       // 这使得 GetDeliveryReport 可以看到完整生命周期，而不只是当前队列。
       {
         std::lock_guard<std::mutex> lock(queue_mutex_);
+        current_order.end_time = this->now();
         completed_orders_.push_back(current_order);
       }
 
@@ -657,8 +665,11 @@ void DeliveryManager::handle_get_report(
     // 这部分数据反映的是尚未被 executor 接走的任务。
   for (const auto & record : order_queue_) {
     DeliveryStatus status;
+    status.stamp = this->now();   // 排队中订单尚未开始执行，用查询时刻作为快照时间
     status.order_id = record.order.order_id;
     status.state = state_to_msg(record.state);
+    status.current_station = record.current_station;
+    status.progress = record.progress;
     status.error_msg = record.error_msg;
     response->reports.push_back(status);
   }
@@ -669,6 +680,7 @@ void DeliveryManager::handle_get_report(
     std::lock_guard<std::mutex> co_lock(current_order_mutex_);
     if (current_order_.has_value()) {
       DeliveryStatus status;
+      status.stamp = this->now();
       status.order_id = current_order_->order.order_id;
       status.state = state_to_msg(current_order_->state);
       status.current_station = current_order_->current_station;
@@ -682,8 +694,11 @@ void DeliveryManager::handle_get_report(
     // 历史记录保留了过去已经结束的任务，方便外部系统做审计或统计。
   for (const auto & record : completed_orders_) {
     DeliveryStatus status;
+    status.stamp = record.end_time;   // 已完成订单用实际完成时间，而非查询时刻
     status.order_id = record.order.order_id;
     status.state = state_to_msg(record.state);
+    status.current_station = record.current_station;
+    status.progress = record.progress;
     status.error_msg = record.error_msg;
     response->reports.push_back(status);
   }

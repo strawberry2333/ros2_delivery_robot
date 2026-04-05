@@ -114,7 +114,7 @@ TEST_F(CheckBatteryTest, BatteryExactThreshold)
  *
  * 这条测试防止节点在“上游暂时没写入电量”的情况下表现得过于脆弱。
  */
-TEST_F(CheckBatteryTest, NoBatteryInfoDefaultsSufficient)
+TEST_F(CheckBatteryTest, NoBatteryInfoDefaultsInsufficient)
 {
   const std::string xml =
     R"(
@@ -127,7 +127,7 @@ TEST_F(CheckBatteryTest, NoBatteryInfoDefaultsSufficient)
 
   auto tree = factory_.createTreeFromText(xml);
 
-  // 故意不写 battery_level，确认节点的默认行为仍然稳定。
+  // 故意不写 battery_level，缺少电量信息时应保守判定为电量不足。
   auto status = tree.tickOnce();
-  EXPECT_EQ(status, BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(status, BT::NodeStatus::FAILURE);
 }

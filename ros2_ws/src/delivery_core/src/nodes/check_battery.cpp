@@ -2,7 +2,7 @@
  * @file check_battery.cpp
  * @brief CheckBattery 条件节点实现。
  *
- * 这个节点通常放在配送任务最前面，作为“是否值得继续执行”的门禁。
+ * 这个节点通常放在配送任务最前面，作为"是否值得继续执行"的门禁。
  * 它只做判断，不做控制，不发消息，不修改电量状态。
  *
  * 业务语义：
@@ -11,6 +11,7 @@
  */
 
 #include "delivery_core/nodes/check_battery.hpp"
+#include "rclcpp/rclcpp.hpp"
 
 namespace delivery_core
 {
@@ -32,8 +33,9 @@ BT::NodeStatus CheckBattery::tick()
   double battery_level = 0.0;
   auto bb = config().blackboard;
   if (!bb->get("battery_level", battery_level)) {
-    // 黑板中没有电量信息时，当前实现选择“默认通过”，避免 demo 因缺字段直接失败。
-    return BT::NodeStatus::SUCCESS;
+    RCLCPP_WARN(rclcpp::get_logger("CheckBattery"),
+      "CheckBattery: blackboard missing battery_level, defaulting to insufficient");
+    return BT::NodeStatus::FAILURE;
   }
 
   // 电量达到阈值则允许继续；否则直接失败，把决策交回父树处理。

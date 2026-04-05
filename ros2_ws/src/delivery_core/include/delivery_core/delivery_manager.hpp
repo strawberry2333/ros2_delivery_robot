@@ -186,6 +186,7 @@ private:
     std::string current_station;      ///< 当前关联站点（由 executor feedback 同步）
     float progress{0.0f};             ///< 当前进度（由 executor feedback 同步）
     rclcpp::Time start_time;          ///< 订单开始执行的时间戳，用于性能统计
+    rclcpp::Time end_time;            ///< 订单完成的时间戳，入库时记录
   };
 
     // ====== 配置加载 ======
