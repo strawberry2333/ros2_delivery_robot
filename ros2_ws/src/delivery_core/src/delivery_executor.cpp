@@ -105,6 +105,9 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_configure(
   // 状态对外发布由 delivery_manager 统一负责（通过 action feedback），
   // executor 不再直接向 /delivery_status 发布，避免双源冲突。
   // 停靠节点会通过速度话题对机器人做微调运动。
+  // 有意使用普通 Publisher 而非 LifecyclePublisher：cmd_vel 需要在 BT 执行期间
+  // 始终可用，而 LifecyclePublisher 在 deactivate 时会被禁用，可能导致
+  // DockAtStation 节点在收尾阶段无法发出刹车指令。
   cmd_vel_pub_ = this->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
 
   // 装货确认服务：仅在等待装货阶段接受确认，防止过早/错误确认导致假成功。
@@ -478,7 +481,7 @@ rclcpp_action::GoalResponse DeliveryExecutor::handle_goal(
 }
 
 rclcpp_action::CancelResponse DeliveryExecutor::handle_cancel(
-  const std::shared_ptr<GoalHandleExecuteDelivery>)
+  const std::shared_ptr<GoalHandleExecuteDelivery> &)
 {
   // action 层统一接受取消请求，真正的停止动作由 BT tick 循环感知 stop/cancel 后完成。
   RCLCPP_INFO(get_logger(), "收到取消配送请求");
@@ -498,9 +501,13 @@ void DeliveryExecutor::handle_accepted(
   }
 
   // BT tick 是长耗时流程，必须放到独立线程，避免阻塞 action server 回调。
-  bt_execution_thread_ = std::thread([this, goal_handle]() {
-        execute_bt(goal_handle);
-      });
+  // 赋值必须在 execution_mutex_ 保护下，与 join_bt_thread() 的读取保持同步。
+  {
+    std::lock_guard<std::mutex> lock(execution_mutex_);
+    bt_execution_thread_ = std::thread([this, goal_handle]() {
+          execute_bt(goal_handle);
+        });
+  }
 }
 
 // ======================== BT 执行核心循环 ========================
@@ -513,8 +520,9 @@ void DeliveryExecutor::execute_bt(
 
   const auto & order = goal_handle->get_goal()->order;
   const auto start_time = std::chrono::steady_clock::now();
-  const auto finish_execution = [this, &goal_handle]() {
+  const auto finish_execution = [this, goal_handle]() {
       // 收尾动作统一放在 lambda 中，避免在多个 return 分支里重复写一致的清理逻辑。
+      // 按值捕获 goal_handle，避免栈上 shared_ptr 引用在异步场景下悬垂。
       executing_.store(false, std::memory_order_release);
       goal_inflight_.store(false, std::memory_order_release);
       current_phase_.store(0, std::memory_order_release);
@@ -564,7 +572,7 @@ void DeliveryExecutor::execute_bt(
   // BT tick 循环是整个执行过程的主驱动器。
   // 每次 tick 都可能推进状态、发起导航、等待确认或结束任务。
   BT::NodeStatus bt_status = BT::NodeStatus::RUNNING;
-  rclcpp::Rate rate(100);  // 100Hz tick
+  rclcpp::Rate rate(10);  // 10Hz tick，对 demo 级配送已足够，避免过高频率的 feedback 网络开销
 
   while (rclcpp::ok() && bt_status == BT::NodeStatus::RUNNING) {
     // 收到外部停机请求时，优先终止本单执行并退出循环。
@@ -640,7 +648,7 @@ void DeliveryExecutor::execute_bt(
       }
     }
 
-    // 100Hz tick 既足够平滑，又不会把 CPU 占满。
+    // 10Hz tick 对 demo 级配送已足够平滑。
     rate.sleep();
   }
 

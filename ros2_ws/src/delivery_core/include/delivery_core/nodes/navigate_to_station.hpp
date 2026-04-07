@@ -25,27 +25,10 @@
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 
+#include "delivery_core/types.hpp"
+
 namespace delivery_core
 {
-
-/// 2D 位姿，用于仓库地图里的站点坐标存储。
-struct Pose2D
-{
-  double x{0.0};
-  double y{0.0};
-  double yaw{0.0};
-};
-
-/// 站点描述，包含站点 ID、位姿和站点类型。
-struct Station
-{
-  std::string id;
-  Pose2D pose;
-  uint8_t type{0};
-};
-
-/// 站点映射表类型别名，便于从黑板按 ID 快速查找站点。
-using StationMap = std::unordered_map<std::string, Station>;
 
 /**
  * @brief 导航到指定站点的 BT 叶节点（StatefulActionNode）
@@ -110,6 +93,9 @@ private:
   GoalHandle::SharedPtr goal_handle_;
   std::shared_future<GoalHandle::WrappedResult> result_future_;
   std::atomic<bool> result_ready_{false};
+  /// 代次计数器，用于区分 RetryUntilSuccessful 下新旧 goal 的 result_callback，
+  /// 避免上一轮 late callback 误将 result_ready_ 置 true。
+  std::atomic<uint64_t> goal_generation_{0};
 };
 
 }  // namespace delivery_core

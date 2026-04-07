@@ -206,7 +206,7 @@ private:
    * 由 BT tick 循环和各节点的停止逻辑完成。
    */
   rclcpp_action::CancelResponse handle_cancel(
-    const std::shared_ptr<GoalHandleExecuteDelivery> goal_handle);
+    const std::shared_ptr<GoalHandleExecuteDelivery> & goal_handle);
 
   /**
    * @brief 接管已接受的 goal。

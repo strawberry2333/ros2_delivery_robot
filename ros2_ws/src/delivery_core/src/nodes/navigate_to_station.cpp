@@ -38,7 +38,8 @@ BT::NodeStatus NavigateToStation::onStart()
   }
 
   // 站点坐标来自黑板，黑板通常由 delivery_executor 在 on_configure 阶段注入。
-  auto stations = config().blackboard->get<StationMap>("stations");
+  // 使用 const 引用避免每次 onStart 时拷贝整个站点表。
+  const auto & stations = config().blackboard->get<StationMap>("stations");
   auto it = stations.find(station_id);
   if (it == stations.end()) {
     RCLCPP_ERROR(node_->get_logger(), "NavigateToStation: 站点不存在 [%s]",
@@ -82,10 +83,15 @@ BT::NodeStatus NavigateToStation::onStart()
 
   // 使用 result_callback 接收结果，避免在 onRunning() 里阻塞等待 action future。
   result_ready_ = false;
+  const uint64_t current_gen = goal_generation_.fetch_add(1, std::memory_order_acq_rel) + 1;
   send_goal_options.result_callback =
-    [this](const GoalHandle::WrappedResult &)
+    [this, current_gen](const GoalHandle::WrappedResult &)
     {
-      result_ready_ = true;
+      // 只有当 generation 匹配时才标记完成，避免 RetryUntilSuccessful 下
+      // 旧 goal 的 late callback 误将新导航标记为完成。
+      if (goal_generation_.load(std::memory_order_acquire) == current_gen) {
+        result_ready_ = true;
+      }
     };
 
   auto goal_future = nav_client_->async_send_goal(goal_msg, send_goal_options);
