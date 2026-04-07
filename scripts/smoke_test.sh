@@ -20,10 +20,12 @@ TIMEOUT=420
 POLL_INTERVAL=2
 DEMO_PID=""
 CLEANUP_DONE=false
+ORDER_ID="smoke_001"
 
 # readonly 表示“只读常量”，后面再赋值会报错。
 # DeliveryStatus.msg 状态枚举
 readonly STATE_WAITING_LOAD=2
+readonly STATE_GOING_TO_DROPOFF=3
 readonly STATE_WAITING_UNLOAD=4
 readonly STATE_COMPLETE=5
 readonly STATE_FAILED=6
@@ -99,15 +101,20 @@ source /opt/ros/jazzy/setup.bash
 source "$WS_DIR/install/setup.bash"
 set -u
 export TURTLEBOT3_MODEL=waffle_pi
+# 给冒烟测试固定独立的 DDS 域，避免其他 ROS 会话或残留发现信息污染 /clock、service graph。
+# 这里不读取用户当前 shell 的 ROS_DOMAIN_ID，目的是让脚本自带隔离性和可重复性。
+export ROS_DOMAIN_ID=88
 
 # 启动前先清理旧进程，避免 /clock 多 publisher 污染
 kill_stale_processes
 sleep 2
 
-echo "[smoke] 启动 demo (headless, rviz:=false)..."
+echo "[smoke] 启动 demo (headless, gui:=false, rviz:=false)..."
 # setsid 会让命令成为新的会话/进程组 leader，后面就能用 kill -- -PID 整组清理。
 # 行尾的 & 表示放到后台执行，不阻塞当前脚本。
-setsid ros2 launch delivery_bringup demo.launch.py rviz:=false &
+setsid ros2 launch delivery_bringup demo.launch.py \
+  gui:=false \
+  rviz:=false &
 # $! 是“最近一个后台任务的 PID”。
 DEMO_PID=$!
 
@@ -131,9 +138,9 @@ echo "[smoke] $SRV_SUBMIT_ORDER 可用 (${SECONDS}s)"
 # 2026-04-05 起状态统一由 delivery_manager 对外发布，不再依赖双发布源。
 echo "[smoke] 等待配送节点就绪..."
 SECONDS=0
-while ! ros2 topic info "$TOPIC_DELIVERY_STATUS" 2>/dev/null | grep -q "Publisher count: [1-9]"; do
+while ! ros2 topic list 2>/dev/null | grep -q "^${TOPIC_DELIVERY_STATUS}$"; do
   if (( SECONDS > 60 )); then
-    echo "[smoke] WARN: 等待 /delivery_status publisher 超时，继续执行"
+    echo "[smoke] WARN: 等待 $TOPIC_DELIVERY_STATUS 话题出现超时，继续执行"
     break
   fi
   sleep "$POLL_INTERVAL"
@@ -146,8 +153,8 @@ SECONDS=0
 while (( SECONDS < 60 )); do
   # $(...) 捕获命令输出；2>&1 把 stderr 合并到 stdout，这样错误信息也能一起拿到。
   # 后面的 || true 是为了让“服务调用失败”变成可重试，而不是触发 set -e 直接退出。
-  SUBMIT_OUTPUT=$(ros2 service call "$SRV_SUBMIT_ORDER" delivery_interfaces/srv/SubmitOrder \
-    "{order: {order_id: 'smoke_001', pickup_station: 'station_A', dropoff_station: 'station_C', priority: 0}}" \
+  SUBMIT_OUTPUT=$(timeout 10s ros2 service call "$SRV_SUBMIT_ORDER" delivery_interfaces/srv/SubmitOrder \
+    "{order: {order_id: '$ORDER_ID', pickup_station: 'station_A', dropoff_station: 'station_C', priority: 0}}" \
     2>&1 || true)
   # 这里的 grep 正则同时兼容不同 CLI 输出格式：accepted=True 或 accepted: True
   if echo "$SUBMIT_OUTPUT" | grep -q "accepted=True\|accepted: True"; then
@@ -173,7 +180,18 @@ STATUS_FILE=$(mktemp /tmp/smoke_status.XXXXXX)
 # 这里用 bash -c '...' 是因为要把整条管道作为一个整体交给 setsid。
 # 单引号包住“大框架”，再通过 '"$VAR"' 的方式把外层变量拼进去，是 shell 里常见写法。
 setsid bash -c 'PYTHONUNBUFFERED=1 ros2 topic echo "'"$TOPIC_DELIVERY_STATUS"'" --no-arr 2>/dev/null \
-  | stdbuf -oL grep -E "^state:" \
+  | stdbuf -oL awk '"'"'
+      /^order_id:/ { order_id=$2 }
+      /^state:/ { state=$2 }
+      /^---$/ {
+        if (order_id != "" && state != "") {
+          print order_id " " state
+          fflush()
+        }
+        order_id=""
+        state=""
+      }
+    '"'"' \
   > "'"$STATUS_FILE"'"' &
 STATUS_SUB_PID=$!
 
@@ -185,12 +203,15 @@ UNLOAD_CONFIRMED=false
 SECONDS=0
 
 while (( SECONDS < TIMEOUT )); do
-  # 读取持久订阅捕获的最新状态
-  # tail -1 取最后一行；awk '/^state:/{print $2}' 表示：
-  # - 只匹配以 state: 开头的行
-  # - 打印第 2 列（也就是状态数值）
+  # 持久订阅文件中每行格式为：<order_id> <state>
   STATUS_LINE=$(tail -1 "$STATUS_FILE" 2>/dev/null || true)
-  STATE=$(echo "$STATUS_LINE" | awk '/^state:/{print $2}')
+  STATUS_ORDER_ID=$(echo "$STATUS_LINE" | awk '{print $1}')
+  STATE=$(echo "$STATUS_LINE" | awk '{print $2}')
+
+  if [[ "$STATUS_ORDER_ID" != "$ORDER_ID" ]]; then
+    sleep "$POLL_INTERVAL"
+    continue
+  fi
 
   # case ... esac 是 shell 里的多分支匹配，适合根据字符串/常量分情况处理。
   case "$STATE" in
@@ -198,28 +219,33 @@ while (( SECONDS < TIMEOUT )); do
       # if ! $LOAD_CONFIRMED：同样是把变量内容当 true/false 命令执行。
       if ! $LOAD_CONFIRMED; then
         echo "[smoke] 状态=WAITING_LOAD, 发送 confirm_load..."
-        ros2 service call "$SRV_CONFIRM_LOAD" std_srvs/srv/Trigger 2>&1 | head -3
+        CONFIRM_OUTPUT=$(timeout 10s ros2 service call "$SRV_CONFIRM_LOAD" std_srvs/srv/Trigger 2>&1 || true)
+        echo "$CONFIRM_OUTPUT" | sed -n '1,3p'
         LOAD_CONFIRMED=true
       fi
       ;;
     "$STATE_WAITING_UNLOAD")
       if ! $UNLOAD_CONFIRMED; then
         echo "[smoke] 状态=WAITING_UNLOAD, 发送 confirm_unload..."
-        ros2 service call "$SRV_CONFIRM_UNLOAD" std_srvs/srv/Trigger 2>&1 | head -3
+        CONFIRM_OUTPUT=$(timeout 10s ros2 service call "$SRV_CONFIRM_UNLOAD" std_srvs/srv/Trigger 2>&1 || true)
+        echo "$CONFIRM_OUTPUT" | sed -n '1,3p'
         UNLOAD_CONFIRMED=true
       fi
       ;;
+    1|"$STATE_GOING_TO_DROPOFF")
+      :
+      ;;
     "$STATE_COMPLETE")
-      echo "[smoke] PASS: 配送完成 (state=$STATE_COMPLETE), 耗时 ${SECONDS}s"
+      echo "[smoke] PASS: 订单 $ORDER_ID 配送完成 (state=$STATE_COMPLETE), 耗时 ${SECONDS}s"
       exit 0
       ;;
     "$STATE_FAILED")
-      echo "[smoke] FAIL: 配送失败 (state=$STATE_FAILED)"
+      echo "[smoke] FAIL: 订单 $ORDER_ID 配送失败 (state=$STATE_FAILED)"
       exit 1
       ;;
     *)
       if [[ -n "$STATE" ]]; then
-        echo "[smoke] 未知状态: state=$STATE (原始: $STATUS_LINE)"
+        echo "[smoke] 未识别状态: order_id=$STATUS_ORDER_ID state=$STATE"
       fi
       ;;
   esac
