@@ -322,14 +322,14 @@ flowchart TB
 
 ## 默认订单执行时序
 
-下面这张图对应默认 demo 路径，也就是 `delivery.launch.py` 默认加载 `single_delivery_robust.xml` 时的一笔订单执行过程。
+下面这张图对应默认 demo 路径，也就是 `delivery.launch.py` 默认加载 `delivery_mission.xml` 时的一笔订单执行过程。
 
 ```mermaid
 sequenceDiagram
     participant User as 用户 / 上位机
     participant Manager as DeliveryManager
     participant Executor as DeliveryExecutor
-    participant BT as single_delivery_robust.xml
+    participant BT as delivery_mission.xml
     participant Nav2 as Nav2
 
     User->>Manager: SubmitOrder(order)
@@ -365,9 +365,9 @@ sequenceDiagram
 
 注意：
 
-- 默认树是 `single_delivery_robust.xml`
-- `CheckBattery` 存在于代码与可选 XML 中，但不是默认 demo 链路的一部分
-- 如果 launch 改为加载 `delivery_mission.xml`，订单执行会在进入 `SingleDelivery` 子树前多一个电量检查
+- 默认树是 `delivery_mission.xml`，包含 `CheckBattery` 前置检查 + `SingleDelivery` 子树
+- 电量不足时 `CheckBattery` 直接返回 FAILURE，executor 中止配送
+- 如需跳过电量检查，可通过 launch 参数 `tree_file` 指定 `single_delivery_robust.xml`
 
 ## 生命周期与启动时序
 
@@ -416,12 +416,12 @@ sequenceDiagram
 
 ### 默认 demo 行为
 
-- `delivery.launch.py` 默认加载 `single_delivery_robust.xml`
-- 默认路径强调“导航失败自动重试一次”
+- `delivery.launch.py` 默认加载 `delivery_mission.xml`（含 CheckBattery + 导航重试）
+- 默认路径包含电量前置检查和导航失败自动重试
 - 首页文档应默认描述这一条主链路
 
 ### 可选能力
 
-- `delivery_mission.xml` 才包含 `CheckBattery`
-- `CheckBattery` 已实现并注册到 BT factory，但只有在所选 XML 引用它时才生效
-- 如果未来默认树切换，README 和本文都应同步更新“默认路径”描述，而不是只更新类图或能力表
+- `single_delivery_robust.xml` 是不含电量检查的子树，可通过 launch 参数 `tree_file` 切换
+- `CheckBattery` 已实现并注册到 BT factory，默认 demo 链路中已生效
+- 如果未来默认树切换，README 和本文都应同步更新”默认路径”描述

@@ -147,7 +147,7 @@ graph TD
 
 ### 默认订单链路
 
-默认 bringup 会加载 `single_delivery_robust.xml`，也就是“带导航重试的单次配送树”，而不是带 `CheckBattery` 的完整任务树。一次订单的默认执行路径如下：
+默认 bringup 会加载 `delivery_mission.xml`，即带 `CheckBattery` 前置检查 + 导航重试的完整任务树。一次订单的默认执行路径如下：
 
 ```mermaid
 sequenceDiagram
@@ -160,7 +160,7 @@ sequenceDiagram
     User->>Manager: SubmitOrder
     Manager->>Manager: 校验订单并入优先级队列
     Manager->>Executor: ExecuteDelivery goal
-    Executor->>BT: 加载 single_delivery_robust.xml
+    Executor->>BT: 加载 delivery_mission.xml
     BT->>Nav2: 导航到 pickup（失败时自动重试一次）
     BT->>Executor: 等待 /confirm_load
     User->>Executor: /confirm_load
@@ -222,8 +222,8 @@ BT 负责单次配送内的决策流程。当前仓库里有三种 XML 变体：
 | XML 文件 | 特点 |
 |---|---|
 | `single_delivery.xml` | 基础版：无重试 |
-| `single_delivery_robust.xml` | 默认 demo 使用；导航失败自动重试一次 |
-| `delivery_mission.xml` | 可选树；在前面增加 `CheckBattery` 条件并引用 `SingleDelivery` 子树 |
+| `single_delivery_robust.xml` | 带导航重试的单次配送子树 |
+| `delivery_mission.xml` | **默认 demo 使用**；`CheckBattery` 前置检查 + 引用 `SingleDelivery` 子树 |
 
 默认树的大致流程是：
 
