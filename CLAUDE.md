@@ -137,6 +137,34 @@ ros2 service call /get_delivery_report delivery_interfaces/srv/GetDeliveryReport
 
 详见 `plan/` 目录下的分阶段计划文档。
 
+## Git 工程规范
+
+### 原子提交原则
+
+每次 commit 必须是一个**逻辑上独立、可单独 review 和 revert 的变更单元**。严禁将多个不相关的修复、功能或重构塞进同一个 commit。
+
+- 一个 bug fix = 一个 commit
+- 一个功能点 = 一个 commit
+- 一批同优先级的审核修复可合为一个 commit，但不同优先级（如 P1 和 P3）必须分开
+- 文档变更与代码变更分开提交
+- 如果一个 commit 的 diff 涉及 3 个以上不相关模块，必须拆分
+
+### 提交前审核门禁
+
+**未经审核的代码禁止提交。** 提交前必须完成以下检查：
+
+1. **构建通过**: `colcon build --symlink-install` 零 error
+2. **测试通过**: `colcon test` 零 failure
+3. **代码审核**: 修复类变更必须经过 Codex 或人工 review 确认后才允许 commit
+4. **审核未通过的代码**: 继续修复 → 重新审核 → 通过后才可提交，禁止跳过审核直接 commit
+
+### Commit Message 格式
+
+- 使用中文撰写，技术术语可保留英文
+- 首行简明扼要说明变更内容（50 字符以内）
+- 空一行后写详细说明（改了什么、为什么改）
+- 多项修改用列表形式罗列
+
 ## Agent Team PUA 配置
 
 所有 teammate 开工前必须加载 pua skill。
