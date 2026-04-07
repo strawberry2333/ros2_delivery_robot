@@ -41,7 +41,7 @@
 // 项目自定义消息/服务/动作接口
 #include "delivery_interfaces/msg/delivery_order.hpp"
 #include "delivery_interfaces/msg/delivery_status.hpp"
-#include "delivery_interfaces/msg/station_info.hpp"
+// delivery_interfaces/msg/station_info.hpp — 当前未使用（RESERVED），不再引入
 #include "delivery_interfaces/srv/submit_order.hpp"
 #include "delivery_interfaces/srv/cancel_order.hpp"
 #include "delivery_interfaces/srv/get_delivery_report.hpp"
@@ -49,6 +49,9 @@
 
 // YAML 配置文件解析库
 #include "yaml-cpp/yaml.h"
+
+// 项目公共类型
+#include "delivery_core/types.hpp"
 
 namespace delivery_core
 {
@@ -74,7 +77,7 @@ public:
   using PoseWithCovarianceStamped = geometry_msgs::msg::PoseWithCovarianceStamped;    ///< 带协方差的位姿（用于初始化 AMCL）
   using DeliveryOrder = delivery_interfaces::msg::DeliveryOrder;           ///< 配送订单消息
   using DeliveryStatus = delivery_interfaces::msg::DeliveryStatus;         ///< 配送状态消息
-  using StationInfo = delivery_interfaces::msg::StationInfo;               ///< 站点信息消息
+  // StationInfo.msg 当前未使用（RESERVED），类型别名已移除
   using ExecuteDelivery = delivery_interfaces::action::ExecuteDelivery;    ///< 配送执行 Action 类型
   using ExecuteDeliveryGoalHandle = rclcpp_action::ClientGoalHandle<ExecuteDelivery>;   ///< 配送 Action Goal 句柄
   using GoalResultFuture = std::shared_future<ExecuteDeliveryGoalHandle::WrappedResult>;  ///< 配送 Action 结果 future 类型别名
@@ -146,31 +149,7 @@ private:
     kCanceled              ///< 当前订单在执行中被用户取消
   };
 
-    /**
-     * @brief 2D 位姿，用于内部坐标存储
-     *
-     * 简化的位姿表示，仅包含平面坐标和朝向角。
-     * 由于配送机器人在室内地面运动，不需要完整的 6DOF 位姿。
-     */
-  struct Pose2D
-  {
-    double x{0.0};         ///< X 坐标（米），相对于地图坐标系原点
-    double y{0.0};         ///< Y 坐标（米），相对于地图坐标系原点
-    double yaw{0.0};       ///< 偏航角（弧度），表示机器人到达站点后的朝向
-  };
-
-    /**
-     * @brief 站点描述，从 YAML 配置文件加载
-     *
-     * 每个站点对应配送环境中的一个物理位置（取货点、送货点或充电桩）。
-     * 站点数据在启动时一次性加载，运行期间不可动态修改。
-     */
-  struct Station
-  {
-    std::string id;           ///< 站点唯一标识符，如 "station_A"
-    Pose2D pose;              ///< 站点在地图坐标系中的位姿
-    uint8_t type{0};          ///< 站点类型：0=取货点(pickup), 1=送货点(dropoff), 2=充电桩(charge)
-  };
+    // Pose2D、Station、StationMap 定义见 delivery_core/types.hpp
 
     /**
      * @brief 订单记录，含运行时状态追踪信息
@@ -417,9 +396,14 @@ private:
   bool use_sim_time_{true};                     ///< 是否使用仿真时钟（仿真环境设为 true，实机设为 false）
 
     // ====== 站点数据 ======
-  std::unordered_map<std::string, Station> stations_;     ///< 站点 ID → Station 映射表，启动时从 YAML 加载
+    /// 站点 ID → Station 映射表，启动时从 YAML 加载。
+    /// 线程安全约定：stations_ 在 run() 阶段一次性加载完毕，system_ready_ 置 true 后
+    /// 不再修改，因此服务回调中的只读访问无需额外加锁。
+  std::unordered_map<std::string, Station> stations_;
 
     // ====== 订单队列 ======
+    // 锁层级约定（嵌套加锁时必须按此顺序，禁止反向）：
+    //   queue_mutex_ > current_order_mutex_ > goal_handle_mutex_
   std::deque<OrderRecord> order_queue_;                    ///< 待执行订单队列（按优先级排序，高优先级在前）
   std::vector<OrderRecord> completed_orders_;              ///< 已完成/失败订单的历史记录，用于报告查询
   std::mutex queue_mutex_;                                 ///< 订单队列互斥锁，保护 order_queue_ 和 completed_orders_ 的并发访问

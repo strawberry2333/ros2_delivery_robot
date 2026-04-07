@@ -40,7 +40,7 @@ def generate_launch_description():
         [bringup_share, "config", "lifecycle_manager.yaml"]
     )
     default_tree_file = PathJoinSubstitution(
-        [core_share, "behavior_trees", "single_delivery_robust.xml"]
+        [core_share, "behavior_trees", "delivery_mission.xml"]
     )
 
     # --- 启动参数声明 ---
