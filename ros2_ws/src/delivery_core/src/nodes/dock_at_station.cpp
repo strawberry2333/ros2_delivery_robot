@@ -3,7 +3,7 @@
  * @brief DockAtStation BT 叶节点实现。
  *
  * 使用 StatefulActionNode 模式，每次 tick 发布一帧低速 cmd_vel，
- * 50 帧后完成停靠（约 500ms @100Hz tick）。可通过 onHalted 随时中断。
+ * 5 帧后完成停靠（约 0.5s @10Hz tick）。可通过 onHalted 随时中断。
  */
 
 #include "delivery_core/nodes/dock_at_station.hpp"

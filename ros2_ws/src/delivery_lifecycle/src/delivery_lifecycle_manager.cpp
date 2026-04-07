@@ -155,6 +155,9 @@ void DeliveryLifecycleManager::load_managed_node_names(
     // 声明 transition_delay_sec 参数，控制 configure → activate 之间的等待时间
     // 这不是业务逻辑延迟，而是给被管理节点留出内部初始化缓冲。
     this->declare_parameter("transition_delay_sec", 2.0);
+    // 声明 startup_delay_sec 参数，编排线程在开始 startup_sequence 前的等待时间
+    // 给被管理节点留出初始化并注册生命周期服务的时间。
+    this->declare_parameter("startup_delay_sec", 2.0);
     // 读取参数值
     node_names = this->get_parameter("managed_nodes").as_string_array();
 }
@@ -236,10 +239,13 @@ void DeliveryLifecycleManager::start_background_threads()
         service_executor_.spin();
     });
 
-    // 启动编排线程，延时 2 秒后开始节点编排
+    // 启动编排线程，延时后开始节点编排
     // 延时是为了等待被管理节点完成初始化并注册生命周期服务。
-    startup_thread_ = std::thread([this]() {
-        std::this_thread::sleep_for(2s);
+    const double startup_delay =
+        this->get_parameter("startup_delay_sec").as_double();
+    startup_thread_ = std::thread([this, startup_delay]() {
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(static_cast<int>(startup_delay * 1000)));
         startup_sequence();
     });
 }

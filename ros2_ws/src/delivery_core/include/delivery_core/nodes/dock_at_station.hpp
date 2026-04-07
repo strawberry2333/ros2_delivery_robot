@@ -28,7 +28,7 @@ namespace delivery_core
  * 输入端口：
  * - `station_id`：当前停靠的站点 ID，仅用于日志和调试输出
  *
- * 每次 tick 发布一帧低速 cmd_vel，50 帧后完成停靠（约 500ms @100Hz）。
+ * 每次 tick 发布一帧低速 cmd_vel，5 帧后完成停靠（约 0.5s @10Hz tick）。
  * 可通过 onHalted 随时中断并刹停。
  */
 class DockAtStation : public BT::StatefulActionNode
@@ -55,7 +55,7 @@ private:
   rclcpp::Node::SharedPtr node_;
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub_;
   int iteration_count_{0};
-  static constexpr int kMaxIterations = 50;
+  static constexpr int kMaxIterations = 5;  // 与 10Hz tick 频率匹配，保持约 0.5s 停靠时长
 };
 
 }  // namespace delivery_core
