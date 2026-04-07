@@ -230,6 +230,18 @@ private:
      */
   bool wait_for_tf();
 
+    /**
+     * @brief 等待 /initialpose 至少有一个订阅者。
+     *
+     * manager 负责发布初始位姿给 AMCL；如果在 AMCL 尚未完成订阅前就一次性发完，
+     * 启动链路会进入“定位未建立 -> Nav2 不激活 -> executor 不可用”的死等状态。
+     * 这里显式等待订阅者出现，避免把初始定位建立建立在启动时序运气上。
+     *
+     * @param[in] timeout_sec 最长等待时间（秒）。
+     * @return 在超时前检测到订阅者返回 true，否则返回 false。
+     */
+  bool wait_for_initial_pose_subscriber(double timeout_sec);
+
 
     /**
      * @brief 发布初始位姿到 /initialpose 话题。

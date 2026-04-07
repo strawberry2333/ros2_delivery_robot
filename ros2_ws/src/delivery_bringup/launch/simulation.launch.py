@@ -13,6 +13,7 @@ from launch.actions import (
     IncludeLaunchDescription,
     SetEnvironmentVariable,
 )
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -28,6 +29,7 @@ def generate_launch_description():
     x_pose = LaunchConfiguration("x_pose")
     y_pose = LaunchConfiguration("y_pose")
     yaw = LaunchConfiguration("yaw")
+    gui = LaunchConfiguration("gui")
 
     # 这些包提供机器人模型、Gazebo 资源和 ros_gz 桥接。
     turtlebot3_model = os.environ.get("TURTLEBOT3_MODEL", "waffle_pi")
@@ -69,6 +71,7 @@ def generate_launch_description():
             "gz_args": "-g -v2 ",
             "on_exit_shutdown": "true",
         }.items(),
+        condition=IfCondition(gui),
     )
 
     # robot_state_publisher 负责发布 URDF 相关 TF，供 Nav2 和 RViz 使用。
@@ -150,6 +153,11 @@ def generate_launch_description():
             "yaw",
             default_value="0.0",
             description="Initial robot yaw in the simulation world",
+        ),
+        DeclareLaunchArgument(
+            "gui",
+            default_value="true",
+            description="Whether to launch the Gazebo GUI client",
         ),
         AppendEnvironmentVariable(
             "GZ_SIM_RESOURCE_PATH",

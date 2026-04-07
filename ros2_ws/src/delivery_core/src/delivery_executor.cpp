@@ -538,8 +538,18 @@ void DeliveryExecutor::execute_bt(
   // 根据 tree_file_path_ 生成本单的行为树实例。
   // 这意味着单次任务的策略不是写死在 C++ 里，而是由 XML 决定。
   BT::Tree tree;
+  auto blackboard = BT::Blackboard::create();
+
+  // 建树前先准备好黑板，让在实例化阶段就读取端口/共享上下文的节点
+  // 能拿到完整环境；否则像 NavigateToStation 这类节点会在构造时直接报缺键。
+  blackboard->set("order_id", order.order_id);
+  blackboard->set("pickup_station", order.pickup_station);
+  blackboard->set("dropoff_station", order.dropoff_station);
+  blackboard->set("stations", stations_);
+  blackboard->set("battery_level", battery_level_.load());
+  blackboard->set("battery_threshold", battery_threshold_);
   try {
-    tree = factory_.createTreeFromFile(tree_file_path_);
+    tree = factory_.createTreeFromFile(tree_file_path_, blackboard);
   } catch (const std::exception & e) {
     RCLCPP_ERROR(get_logger(), "创建行为树失败: %s", e.what());
 
@@ -557,15 +567,6 @@ void DeliveryExecutor::execute_bt(
     finish_execution();
     return;
   }
-
-  // 黑板是 BT 节点之间共享上下文的核心。
-  // 这里把订单信息、站点表和当前电量一次性写进去，供子节点读取。
-  tree.rootBlackboard()->set("order_id", order.order_id);
-  tree.rootBlackboard()->set("pickup_station", order.pickup_station);
-  tree.rootBlackboard()->set("dropoff_station", order.dropoff_station);
-  tree.rootBlackboard()->set("stations", stations_);
-  tree.rootBlackboard()->set("battery_level", battery_level_.load());
-  tree.rootBlackboard()->set("battery_threshold", battery_threshold_);
 
   // 初始状态由 manager 通过 action feedback 对外发布，executor 不再直接发布。
 

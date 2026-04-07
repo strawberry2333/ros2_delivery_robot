@@ -171,19 +171,23 @@ void DeliveryManager::run()
     publish_initial_pose();
   }
 
-    // --- 准备阶段 4: 等待 delivery_executor Action Server ---
-    // executor 的 on_activate 会先确认 Nav2 已进入可用状态，再注册这个 action server。
-    // 因此这里不仅是在等节点存在，更是在等整个执行链路可接单。
-  if (!wait_for_executor_server()) {
-    RCLCPP_ERROR(get_logger(), "ExecuteDelivery action server 不可用");
+    // --- 准备阶段 4: 等待 TF 链路就绪 ---
+    // map→base_link 需要 AMCL 收到初始位姿后才会出现。
+    // 这里优先把 TF 链路等起来，而不是先等 executor action server：
+    // executor 的 activate 也依赖 Nav2 进入 Active，而 Nav2 自身又依赖 TF。
+    // 如果先等 action server，会把“定位未建立”的根因掩盖成“executor 不可用”。
+    //
+    // 由于 /initialpose 是一次性引导消息，这里在 TF 未就绪时会补发初始位姿，
+    // 避免 AMCL 因订阅时机或启动抖动错过第一次消息。
+  if (!wait_for_tf()) {
+    RCLCPP_ERROR(get_logger(), "TF 链路不可用");
     return;
   }
 
-    // --- 准备阶段 5: 等待 TF 链路就绪 ---
-    // map→base_link 需要 AMCL 收到初始位姿后才会出现。
-    // 这一关过了，说明“导航任务发出去后，executor 能拿到可用位姿”。
-  if (!wait_for_tf()) {
-    RCLCPP_ERROR(get_logger(), "TF 链路不可用");
+    // --- 准备阶段 5: 等待 delivery_executor Action Server ---
+    // 只有当 Nav2/TF 已经稳定后，再等待 executor 对外开放 action server。
+  if (!wait_for_executor_server()) {
+    RCLCPP_ERROR(get_logger(), "ExecuteDelivery action server 不可用");
     return;
   }
 
@@ -838,6 +842,7 @@ bool DeliveryManager::wait_for_tf()
                 map_frame_.c_str(), base_frame_.c_str());
 
   const auto start_time = this->now();
+  rclcpp::Time last_republish_time = start_time;
   while (rclcpp::ok()) {
     try {
             // 尝试查询 map→base_link 的变换。
@@ -847,7 +852,17 @@ bool DeliveryManager::wait_for_tf()
       RCLCPP_INFO(get_logger(), "TF 链路就绪");
       return true;
     } catch (const tf2::TransformException &) {
-            // 变换尚不可用，等待后重试。
+            // 变换尚不可用。
+            // 如果 manager 负责初始定位，则周期性补发 /initialpose，直到 AMCL 真正建好 map→odom。
+      if (publish_initial_pose_ &&
+        (this->now() - last_republish_time).seconds() >= 2.0)
+      {
+        RCLCPP_INFO(get_logger(), "TF 尚未就绪，补发初始位姿到 /initialpose");
+        publish_initial_pose();
+        last_republish_time = this->now();
+      }
+
+            // 等待后重试。
       rclcpp::sleep_for(200ms);
     }
 
@@ -874,6 +889,12 @@ bool DeliveryManager::wait_for_tf()
  */
 void DeliveryManager::publish_initial_pose()
 {
+  if (!wait_for_initial_pose_subscriber(5.0)) {
+    RCLCPP_WARN(
+      get_logger(),
+      "/initialpose 在 5.0 秒内未出现订阅者，仍继续发布初始位姿");
+  }
+
   PoseWithCovarianceStamped msg;
   msg.header.frame_id = map_frame_;
   msg.header.stamp = this->now();
@@ -899,6 +920,24 @@ void DeliveryManager::publish_initial_pose()
     initial_pose_pub_->publish(msg);
     rclcpp::sleep_for(200ms);
   }
+}
+
+bool DeliveryManager::wait_for_initial_pose_subscriber(double timeout_sec)
+{
+  const auto start_time = this->now();
+  while (rclcpp::ok()) {
+    if (initial_pose_pub_ && initial_pose_pub_->get_subscription_count() > 0) {
+      return true;
+    }
+
+    if ((this->now() - start_time).seconds() > timeout_sec) {
+      return false;
+    }
+
+    rclcpp::sleep_for(100ms);
+  }
+
+  return false;
 }
 
 // ======================== 状态管理 ========================

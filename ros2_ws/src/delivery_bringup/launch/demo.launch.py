@@ -37,15 +37,18 @@ def generate_launch_description():
     # 获取 delivery_bringup 包的安装路径，用于定位子 launch 文件。
     # 这样 demo 可以稳定引用同包内的 simulation/navigation/delivery launch。
     bringup_dir = get_package_share_directory("delivery_bringup")
+    turtlebot3_nav_dir = get_package_share_directory("turtlebot3_navigation2")
 
     # 是否使用仿真时间。
     # 仿真环境下必须为 true，以确保所有节点使用 Gazebo 发布的 /clock 时间。
     use_sim_time = LaunchConfiguration("use_sim_time", default="true")
     world = LaunchConfiguration("world")
     map_yaml = LaunchConfiguration("map")
+    params_file = LaunchConfiguration("params_file")
     x_pose = LaunchConfiguration("x_pose")
     y_pose = LaunchConfiguration("y_pose")
     yaw = LaunchConfiguration("yaw")
+    gui = LaunchConfiguration("gui")
     rviz = LaunchConfiguration("rviz")
     rviz_delay = LaunchConfiguration("rviz_delay")
     rviz_config = LaunchConfiguration("rviz_config")
@@ -56,6 +59,17 @@ def generate_launch_description():
     default_map = os.path.join(
         get_package_share_directory("delivery_simulation"), "maps", "warehouse.yaml"
     )
+    turtlebot3_model = os.environ.get("TURTLEBOT3_MODEL", "waffle_pi")
+    ros_distro = os.environ.get("ROS_DISTRO", "")
+    param_file_name = f"{turtlebot3_model}.yaml"
+    if ros_distro == "humble":
+        default_params_file = os.path.join(
+            turtlebot3_nav_dir, "param", ros_distro, param_file_name
+        )
+    else:
+        default_params_file = os.path.join(
+            turtlebot3_nav_dir, "param", param_file_name
+        )
 
     # 第 1 阶段：仿真环境。
     # 这里先启动 world、机器人和桥接，再把后续节点挂到 TimerAction 里。
@@ -69,6 +83,7 @@ def generate_launch_description():
             "x_pose": x_pose,
             "y_pose": y_pose,
             "yaw": yaw,
+            "gui": gui,
         }.items(),
     )
 
@@ -84,6 +99,7 @@ def generate_launch_description():
                 launch_arguments={
                     "use_sim_time": use_sim_time,
                     "map": map_yaml,
+                    "params_file": params_file,
                     "rviz": rviz,
                     "rviz_delay": rviz_delay,
                     "rviz_config": rviz_config,
@@ -132,6 +148,11 @@ def generate_launch_description():
                 description="Full path to the Nav2 map yaml",
             ),
             DeclareLaunchArgument(
+                "params_file",
+                default_value=default_params_file,
+                description="Full path to the Nav2 params yaml",
+            ),
+            DeclareLaunchArgument(
                 "x_pose",
                 default_value="-2.0",
                 description="Initial robot X pose",
@@ -145,6 +166,11 @@ def generate_launch_description():
                 "yaw",
                 default_value="0.0",
                 description="Initial robot yaw",
+            ),
+            DeclareLaunchArgument(
+                "gui",
+                default_value="true",
+                description="Whether to launch the Gazebo GUI client",
             ),
             DeclareLaunchArgument(
                 "rviz",
