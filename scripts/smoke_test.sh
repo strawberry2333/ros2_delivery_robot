@@ -112,9 +112,11 @@ sleep 2
 echo "[smoke] 启动 demo (headless, gui:=false, rviz:=false)..."
 # setsid 会让命令成为新的会话/进程组 leader，后面就能用 kill -- -PID 整组清理。
 # 行尾的 & 表示放到后台执行，不阻塞当前脚本。
+SMOKE_PARAMS_FILE="$(ros2 pkg prefix delivery_bringup)/share/delivery_bringup/config/nav2_smoke_fast.yaml"
 setsid ros2 launch delivery_bringup demo.launch.py \
   gui:=false \
-  rviz:=false &
+  rviz:=false \
+  params_file:="$SMOKE_PARAMS_FILE" &
 # $! 是“最近一个后台任务的 PID”。
 DEMO_PID=$!
 
