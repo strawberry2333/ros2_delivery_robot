@@ -115,7 +115,7 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_configure(
     "confirm_load",
     [this](const std::shared_ptr<std_srvs::srv::Trigger::Request>,
     std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-      if (current_phase_.load(std::memory_order_acquire) != 1) {
+      if (current_phase_.load(std::memory_order_acquire) != ConfirmationPhase::kWaitingLoad) {
         response->success = false;
         response->message = "当前不在等待装货阶段，确认被忽略";
         RCLCPP_WARN(get_logger(), "收到装货确认信号，但当前不在等待装货阶段");
@@ -133,7 +133,7 @@ DeliveryExecutor::CallbackReturn DeliveryExecutor::on_configure(
     "confirm_unload",
     [this](const std::shared_ptr<std_srvs::srv::Trigger::Request>,
     std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-      if (current_phase_.load(std::memory_order_acquire) != 2) {
+      if (current_phase_.load(std::memory_order_acquire) != ConfirmationPhase::kWaitingUnload) {
         response->success = false;
         response->message = "当前不在等待卸货阶段，确认被忽略";
         RCLCPP_WARN(get_logger(), "收到卸货确认信号，但当前不在等待卸货阶段");
@@ -525,7 +525,7 @@ void DeliveryExecutor::execute_bt(
       // 按值捕获 goal_handle，避免栈上 shared_ptr 引用在异步场景下悬垂。
       executing_.store(false, std::memory_order_release);
       goal_inflight_.store(false, std::memory_order_release);
-      current_phase_.store(0, std::memory_order_release);
+      current_phase_.store(ConfirmationPhase::kNone, std::memory_order_release);
       clear_active_goal(goal_handle);
     };
 
@@ -628,11 +628,11 @@ void DeliveryExecutor::execute_bt(
 
     // 根据 BT 状态同步确认阶段标志，使 confirm_load/unload 服务能做阶段感知。
     if (bt_state == DeliveryStatus::STATE_WAITING_LOAD) {
-      current_phase_.store(1, std::memory_order_release);
+      current_phase_.store(ConfirmationPhase::kWaitingLoad, std::memory_order_release);
     } else if (bt_state == DeliveryStatus::STATE_WAITING_UNLOAD) {
-      current_phase_.store(2, std::memory_order_release);
+      current_phase_.store(ConfirmationPhase::kWaitingUnload, std::memory_order_release);
     } else {
-      current_phase_.store(0, std::memory_order_release);
+      current_phase_.store(ConfirmationPhase::kNone, std::memory_order_release);
     }
 
     std::string bt_station;

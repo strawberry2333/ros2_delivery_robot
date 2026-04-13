@@ -67,6 +67,13 @@ public:
   using DeliveryStatus = delivery_interfaces::msg::DeliveryStatus;
   /// 生命周期回调的统一返回类型。
   using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
+  /// 人工确认阶段枚举，供服务回调与 BT 执行线程共享阶段语义。
+  enum class ConfirmationPhase : uint8_t
+  {
+    kNone = 0,
+    kWaitingLoad = 1,
+    kWaitingUnload = 2,
+  };
 
   /**
    * @brief 构造函数。
@@ -259,9 +266,8 @@ private:
   std::atomic<bool> load_confirmed_{false};
   /// 由 /confirm_unload 服务置位，供 WaitForConfirmation 节点读取。
   std::atomic<bool> unload_confirmed_{false};
-  /// 当前执行阶段：0=无, 1=等待装货确认, 2=等待卸货确认。
-  /// 服务回调据此拒绝不在对应阶段的过早/错误确认。
-  std::atomic<uint8_t> current_phase_{0};
+  /// 当前执行阶段。服务回调据此拒绝不在对应阶段的过早/错误确认。
+  std::atomic<ConfirmationPhase> current_phase_{ConfirmationPhase::kNone};
 
   // ====== 执行状态 ======
   /// 标记当前是否已有已接受但未结束的 goal，避免 handle_goal / handle_accepted 的竞态窗口。
